@@ -25,7 +25,7 @@ jobs:
       with:
         arch: arm64
         compiler: aosp-clang/android10-release/clang-r353983c
-        defconfig: e4676_defconfig
+        defconfig: e6746_defconfig
         image: Image.gz-dtb
 
     - name: Release build
