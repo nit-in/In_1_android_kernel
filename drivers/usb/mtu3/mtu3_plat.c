@@ -27,11 +27,6 @@
 #include "mtu3.h"
 #include "mtu3_dr.h"
 
-bool is_saving_mode(void)
-{
-	return false;
-}
-
 /* u2-port0 should be powered on and enabled; */
 int ssusb_check_clocks(struct ssusb_mtk *ssusb, u32 ex_clks)
 {
@@ -264,10 +259,8 @@ static int get_ssusb_rscs(struct platform_device *pdev, struct ssusb_mtk *ssusb)
 
 	res = platform_get_resource_byname(pdev, IORESOURCE_MEM, "ippc");
 	ssusb->ippc_base = devm_ioremap_resource(dev, res);
-	if (IS_ERR(ssusb->ippc_base)) {
-		dev_info(dev, "failed to map memory for ippc\n");
+	if (IS_ERR(ssusb->ippc_base))
 		return PTR_ERR(ssusb->ippc_base);
-	}
 
 	ssusb->dr_mode = usb_get_dr_mode(dev);
 	if (ssusb->dr_mode == USB_DR_MODE_UNKNOWN) {
@@ -282,9 +275,6 @@ static int get_ssusb_rscs(struct platform_device *pdev, struct ssusb_mtk *ssusb)
 	ret = ssusb_wakeup_of_property_parse(ssusb, node);
 	if (ret)
 		return ret;
-
-	ssusb->u3ports_disable =
-		of_property_read_bool(node, "mediatek,u3ports-disable");
 
 	if (ssusb->dr_mode != USB_DR_MODE_OTG)
 		return 0;
@@ -468,6 +458,7 @@ static int __maybe_unused mtu3_resume(struct device *dev)
 {
 	struct platform_device *pdev = to_platform_device(dev);
 	struct ssusb_mtk *ssusb = platform_get_drvdata(pdev);
+	int ret;
 
 	dev_dbg(dev, "%s\n", __func__);
 
@@ -475,12 +466,28 @@ static int __maybe_unused mtu3_resume(struct device *dev)
 		return 0;
 
 	ssusb_wakeup_disable(ssusb);
-	clk_prepare_enable(ssusb->sys_clk);
-	clk_prepare_enable(ssusb->ref_clk);
-	ssusb_phy_power_on(ssusb);
+	ret = clk_prepare_enable(ssusb->sys_clk);
+	if (ret)
+		goto err_sys_clk;
+
+	ret = clk_prepare_enable(ssusb->ref_clk);
+	if (ret)
+		goto err_ref_clk;
+
+	ret = ssusb_phy_power_on(ssusb);
+	if (ret)
+		goto err_power_on;
+
 	ssusb_host_enable(ssusb);
 
 	return 0;
+
+err_power_on:
+	clk_disable_unprepare(ssusb->ref_clk);
+err_ref_clk:
+	clk_disable_unprepare(ssusb->sys_clk);
+err_sys_clk:
+	return ret;
 }
 
 static const struct dev_pm_ops mtu3_pm_ops = {
@@ -493,6 +500,7 @@ static const struct dev_pm_ops mtu3_pm_ops = {
 
 static const struct of_device_id mtu3_of_match[] = {
 	{.compatible = "mediatek,mt8173-mtu3",},
+	{.compatible = "mediatek,mtu3",},
 	{},
 };
 

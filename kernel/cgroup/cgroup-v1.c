@@ -382,12 +382,6 @@ static int pidlist_array_load(struct cgroup *cgrp, enum cgroup_filetype type,
 	while ((tsk = css_task_iter_next(&it))) {
 		if (unlikely(n == length))
 			break;
-
-		/* mtk: don't get pid when proc/task killed */
-		if ((SIGNAL_GROUP_EXIT & tsk->signal->flags) ||
-			(PF_EXITING & tsk->flags))
-			continue;
-
 		/* get tgid or pid for procs or tasks file respectively */
 		if (type == CGROUP_FILE_PROCS)
 			pid = task_tgid_vnr(tsk);
@@ -547,8 +541,7 @@ static ssize_t __cgroup1_procs_write(struct kernfs_open_file *of,
 	tcred = get_task_cred(task);
 	if (!uid_eq(cred->euid, GLOBAL_ROOT_UID) &&
 	    !uid_eq(cred->euid, tcred->uid) &&
-	    !uid_eq(cred->euid, tcred->suid) &&
-	    !ns_capable(tcred->user_ns, CAP_SYS_NICE))
+	    !uid_eq(cred->euid, tcred->suid))
 		ret = -EACCES;
 	put_cred(tcred);
 	if (ret)

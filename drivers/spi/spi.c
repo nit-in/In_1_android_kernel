@@ -1050,9 +1050,7 @@ static int spi_transfer_one_message(struct spi_controller *ctlr,
 				ret = 0;
 				ms = 8LL * 1000LL * xfer->len;
 				do_div(ms, xfer->speed_hz);
-				/* Increase spi transfer tolerance to 2s */
-				/* To aviod timeout when OS is busy.*/
-				ms += 2000;
+				ms += ms + 200; /* some tolerance */
 
 				if (ms > UINT_MAX)
 					ms = UINT_MAX;

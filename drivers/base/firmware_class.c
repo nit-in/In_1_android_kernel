@@ -371,11 +371,7 @@ static const char * const fw_path[] = {
 	"/lib/firmware/updates/" UTS_RELEASE,
 	"/lib/firmware/updates",
 	"/lib/firmware/" UTS_RELEASE,
-/*prize-add-pengzhipeng-20191014-start*/
-	"/lib/firmware",
-	"/etc/firmware"
-/*prize-add-pengzhipeng-20191014-end*/
-
+	"/lib/firmware"
 };
 
 /*

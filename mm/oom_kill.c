@@ -42,13 +42,6 @@
 #include <linux/init.h>
 #include <linux/mmu_notifier.h>
 
-#ifdef CONFIG_MTK_ION
-#include "mtk/ion_drv.h"
-#endif
-#ifdef CONFIG_MTK_GPU_SUPPORT
-#include <mt-plat/mtk_gpu_utility.h>
-#endif
-
 #include <asm/tlb.h>
 #include "internal.h"
 
@@ -412,18 +405,6 @@ static void dump_tasks(struct mem_cgroup *memcg, const nodemask_t *nodemask)
 	rcu_read_unlock();
 }
 
-/* dump extra info: HW memory usage */
-static void oom_dump_extra_info(void)
-{
-#ifdef CONFIG_MTK_ION
-	ion_mm_heap_memory_detail();
-#endif
-#ifdef CONFIG_MTK_GPU_SUPPORT
-	if (mtk_dump_gpu_memory_usage() == false)
-		pr_info("mtk_dump_gpu_memory_usage not support\n");
-#endif
-}
-
 static void dump_header(struct oom_control *oc, struct task_struct *p)
 {
 	pr_warn("%s invoked oom-killer: gfp_mask=%#x(%pGg), nodemask=",
@@ -445,8 +426,6 @@ static void dump_header(struct oom_control *oc, struct task_struct *p)
 		show_mem(SHOW_MEM_FILTER_NODES, oc->nodemask);
 	if (sysctl_oom_dump_tasks)
 		dump_tasks(oc->memcg, oc->nodemask);
-
-	oom_dump_extra_info();
 }
 
 /*
@@ -868,12 +847,6 @@ static void oom_kill_process(struct oom_control *oc, const char *message)
 	 * its children or threads, just give it access to memory reserves
 	 * so it can die quickly
 	 */
-
-    // prize zengke 20180620 add for ddr test,ignore memtest thread-----begin
-    if (strstr("memtester", p->comm) || strstr("pri.factorytest", p->comm))
-            return;
-    // prize zengke 20180620 add for ddr test,ignore memtest thread-----end
-
 	task_lock(p);
 	if (task_will_free_mem(p)) {
 		mark_oom_victim(p);
@@ -1104,9 +1077,6 @@ bool out_of_memory(struct oom_control *oc)
 	/* Found nothing?!?! Either we hang forever, or we panic. */
 	if (!oc->chosen && !is_sysrq_oom(oc) && !is_memcg_oom(oc)) {
 		dump_header(oc, NULL);
-#ifdef CONFIG_PAGE_OWNER
-		print_max_page_owner();
-#endif
 		panic("Out of memory and no killable processes...\n");
 	}
 	if (oc->chosen && oc->chosen != (void *)-1UL) {

@@ -157,6 +157,4 @@ config EXTCON_USBC_CROS_EC
 	  Say Y here to enable USB Type C cable detection extcon support when
 	  using Chrome OS EC based USB Type-C ports.
 
-source "drivers/extcon/mediatek/Kconfig"
-
 endif
