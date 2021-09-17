@@ -18,7 +18,7 @@ jobs:
         path: zipper
 
     - name: Android kernel build
-      uses: nit-in/android-kernel-actions@master
+      uses: nit-in/android-kernel-actions@test
       id: build
       env:
         NAME: Micromax_IN_1
