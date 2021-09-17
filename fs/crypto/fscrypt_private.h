@@ -12,6 +12,7 @@
 #ifndef _FSCRYPT_PRIVATE_H
 #define _FSCRYPT_PRIVATE_H
 
+#include <linux/fscrypt.h>
 #include <linux/fscrypt_supp.h>
 #include <crypto/hash.h>
 
