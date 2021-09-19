@@ -29,7 +29,6 @@
 
 #define MT6360_PMU_FLED_DRV_VERSION	"1.0.1_MTK"
 
-
 static DEFINE_MUTEX(fled_lock);
 
 static bool mt6360_fled_inited;
@@ -379,6 +378,7 @@ static int mt6360_fled_set_mode(struct rt_fled_dev *fled,
 			dev_err(fi->dev, "%s set %s mode with HZ=1\n",
 					 __func__, flashlight_mode_str[mode]);
 		}
+
 		ret = mt6360_pmu_reg_test_bit(fi->mpi, MT6360_PMU_CHG_CTRL2,
 					      MT6360_SHFT_CFO_EN, &cfo_en);
 		if (ret >= 0 && !cfo_en) {
@@ -759,7 +759,8 @@ static int mt6360_pmu_fled_probe(struct platform_device *pdev)
 	bool use_dt = pdev->dev.of_node;
 	int ret, i;
 
-	dev_err(&pdev->dev, "%s\n", __func__);
+	pr_info("%s (%s) id = %d\n", __func__, MT6360_PMU_FLED_DRV_VERSION,
+					       pdev->id);
 	if (!mt6360_fled_inited) {
 		if (use_dt) {
 			pdata = devm_kzalloc(&pdev->dev, sizeof(*pdata),
@@ -886,4 +887,13 @@ module_platform_driver(mt6360_pmu_fled_driver);
 MODULE_AUTHOR("CY_Huang <cy_huang@richtek.com>");
 MODULE_DESCRIPTION("MT6360 PMU FLED Driver");
 MODULE_LICENSE("GPL");
-MODULE_VERSION("1.0.0");
+MODULE_VERSION(MT6360_PMU_FLED_DRV_VERSION);
+
+/*
+ * Version Note
+ * 1.0.1_MTK
+ * (1) Print warnings when strobe mode with HZ=1 or CFO=0
+ *
+ * 1.0.0_MTK
+ * (1) Initial Release
+ */

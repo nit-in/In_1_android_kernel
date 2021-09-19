@@ -24,11 +24,9 @@
 #include <linux/fdtable.h>
 //#include <mmprofile.h>
 //#include <mmprofile_function.h>
-#include <linux/debugfs.h>
 #include <linux/kthread.h>
 #include <linux/sched/task.h>
 #include <linux/sched/signal.h>
-#include <linux/delay.h>
 #include "mtk/mtk_ion.h"
 #include "ion_profile.h"
 #include "ion_drv_priv.h"
@@ -235,12 +233,14 @@ static int ion_sec_heap_allocate(struct ion_heap *heap,
 	refcount = 0;
 #endif
 
-	if (ret == -ENOMEM || sec_handle <= 0) {
-		if (ret == -ENOMEM)
-			IONMSG(
-			       "%s security out of memory, heap:%d\n",
-				__func__, heap->id);
-
+	if (ret == -ENOMEM) {
+		IONMSG(
+			"%s security out of memory, heap:%d\n",
+			__func__, heap->id);
+		/* avoid recursive deadlock */
+		/* heap->debug_show(heap, NULL, NULL); */
+	}
+	if (sec_handle <= 0) {
 		IONMSG(
 			"%s alloc security memory failed, total size %zu\n",
 			__func__, sec_heap_total_memory);
@@ -621,7 +621,7 @@ static int ion_sec_heap_debug_show(
 {
 	struct ion_device *dev = heap->dev;
 	struct rb_node *n;
-	int *secur_handle;
+	ion_phys_addr_t secur_handle;
 	struct ion_sec_buffer_info *bug_info;
 	bool has_orphaned = false;
 	size_t fr_size = 0;
@@ -652,21 +652,20 @@ static int ion_sec_heap_debug_show(
 		*buffer = rb_entry(n, struct ion_buffer, node);
 		if (buffer->heap->type != heap->type)
 			continue;
-		secur_handle = (int *)buffer->priv_virt;
 		bug_info = (struct ion_sec_buffer_info *)buffer->priv_virt;
+		secur_handle = bug_info->priv_phys;
 
 		if ((int)buffer->heap->type ==
 			(int)ION_HEAP_TYPE_MULTIMEDIA_SEC) {
 			ION_DUMP(s,
-				 "0x%p %8zu %3d %3d %3d 0x%10.x %3lu %3d %3d %3d %s %s",
+				 "0x%p %8zu %3d %3d %3d %10lx %3lu %3d %3d %3d %s %s\n",
 				 buffer, buffer->size, buffer->kmap_cnt,
 				 atomic_read(&buffer->ref.refcount.refs),
-				 buffer->handle_count, *secur_handle,
+				 buffer->handle_count, secur_handle,
 				 buffer->flags, bug_info->module_id,
 				 buffer->heap->id,
 				 buffer->pid, buffer->task_comm,
 				 bug_info->dbg_info.dbg_name);
-			ION_DUMP(s, ")\n");
 
 			if (buffer->heap->id == ION_HEAP_TYPE_MULTIMEDIA_SEC)
 				sec_size += buffer->size;
@@ -692,19 +691,7 @@ static int ion_sec_heap_debug_show(
 	ION_DUMP(s, "%16s %16zu\n", "2d-fr-sz:", fr_size);
 	ION_DUMP(s, "%s\n", seq_line);
 
-	if (!down_read_trylock(&dev->lock)) {
-		ION_DUMP(s,
-			 "[%s %d] get ion dev read lock fail, try again after 5ms\n",
-			 __func__, __LINE__);
-		mdelay(5);
-		if (!down_read_trylock(&dev->lock)) {
-			ION_DUMP(s,
-				 "[%s %d] get ion dev lock fail again, bypass client dump\n",
-				 __func__, __LINE__);
-			return 0;
-		}
-	}
-
+	down_read(&dev->lock);
 	for (n = rb_first(&dev->clients); n; n = rb_next(n)) {
 		struct ion_client
 		*client = rb_entry(n, struct ion_client, node);
@@ -738,17 +725,10 @@ static int ion_sec_heap_debug_show(
 				    ION_HEAP_TYPE_MULTIMEDIA_PROT ||
 				    handle->buffer->heap->id ==
 				    ION_HEAP_TYPE_MULTIMEDIA_2D_FR) {
-					ION_DUMP(
-						 s,
-						 "\thandle=0x%p, buffer=0x%p",
-						 handle, handle->buffer);
-					ION_DUMP(
-						 s,
-						 ", heap=%d",
-						 handle->buffer->heap->id);
-					ION_DUMP(
-						 s,
-						 "fd=%4d, ts: %lldms\n",
+					ION_DUMP(s,
+						 "\thandle=0x%p, buffer=0x%p, heap=%d, fd=%4d, ts: %lldms\n",
+						 handle, handle->buffer,
+						 handle->buffer->heap->id,
 						 handle->dbg.fd,
 						 handle->dbg.user_ts);
 				}

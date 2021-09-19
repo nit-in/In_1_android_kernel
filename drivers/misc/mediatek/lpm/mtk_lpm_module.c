@@ -138,7 +138,7 @@ int mtk_lpm_module_register_blockcall(int cpu, void *p)
 
 	if (!reg || (reg->magic != MTK_LPM_MODULE_MAGIC)) {
 		pr_info("[name:mtk_lpm][P] - registry(%d) fail (%s:%d)\n",
-			reg->type, __func__, __LINE__);
+			reg ? reg->type : -1, __func__, __LINE__);
 		return -EINVAL;
 	}
 
@@ -222,6 +222,9 @@ int mtk_lp_cpuidle_prepare(struct cpuidle_driver *drv, int index)
 	unsigned long flags;
 	const int cpuid = smp_processor_id();
 
+	if (index < 0)
+		return -1;
+
 	lpmmods = this_cpu_ptr(&mtk_lpm_mods);
 
 	if (lpmmods && lpmmods->mod[index])
@@ -262,6 +265,9 @@ void mtk_lp_cpuidle_resume(struct cpuidle_driver *drv, int index)
 	unsigned int model_flags = 0;
 	unsigned long flags;
 	const int cpuid = smp_processor_id();
+
+	if (index < 0)
+		return;
 
 	lpmmods = this_cpu_ptr(&mtk_lpm_mods);
 
@@ -336,21 +342,28 @@ int mtk_lpm_suspend_registry(const char *name, struct mtk_lpm_model *suspend)
 	if (!suspend)
 		return -EINVAL;
 
-	spin_lock_irqsave(&mtk_lp_mod_locker, flags);
 
 	if (mtk_lpm_system.suspend.flag &
 			MTK_LP_REQ_NOSYSCORE_CB) {
 		mtk_lp_model_register(name, suspend);
-	} else
+	} else {
+		spin_lock_irqsave(&mtk_lp_mod_locker, flags);
 		memcpy(&mtk_lpm_system.suspend, suspend,
 				sizeof(struct mtk_lpm_model));
-
-	spin_unlock_irqrestore(&mtk_lp_mod_locker, flags);
+		spin_unlock_irqrestore(&mtk_lp_mod_locker, flags);
+	}
 	return 0;
 }
 EXPORT_SYMBOL(mtk_lpm_suspend_registry);
 
-static struct wakeup_source mtk_lpm_lock;
+int mtk_lpm_suspend_type_get(void)
+{
+	return (mtk_lpm_system.suspend.flag & MTK_LP_REQ_NOSYSCORE_CB)
+		? MTK_LPM_SUSPEND_S2IDLE : MTK_LPM_SUSPEND_SYSTEM;
+}
+EXPORT_SYMBOL(mtk_lpm_suspend_type_get);
+
+static struct wakeup_source *mtk_lpm_lock;
 
 static int __init mtk_lpm_init(void)
 {
@@ -360,6 +373,7 @@ static int __init mtk_lpm_init(void)
 	mtk_lpm_system.suspend.flag = MTK_LP_REQ_NOSUSPEND;
 
 	mtk_lpm = of_find_compatible_node(NULL, NULL, MTK_LPM_DTS_COMPATIBLE);
+	mtk_lpm_drv_cpuidle_ops_set(&mtk_lpm_cpu_pm_op);
 
 	spin_lock_irqsave(&mtk_lp_mod_locker, flags);
 
@@ -391,17 +405,22 @@ static int __init mtk_lpm_init(void)
 	spin_unlock_irqrestore(&mtk_lp_mod_locker, flags);
 
 	if (mtk_lpm_system.suspend.flag & MTK_LP_REQ_NOSUSPEND) {
-		wakeup_source_init(&mtk_lpm_lock, "mtk_lpm_lock");
-		__pm_stay_awake(&mtk_lpm_lock);
+		mtk_lpm_lock = wakeup_source_register(NULL, "mtk_lpm_lock");
+		if (!mtk_lpm_lock) {
+			pr_info("[name:mtk_lpm][P] - initialize mtk_lpm_lock wakeup source fail\n");
+			return -1;
+		}
+		__pm_stay_awake(mtk_lpm_lock);
 		pr_info("[name:mtk_lpm][P] - device not support kernel suspend\n");
 	}
 
 	if (!(mtk_lpm_system.suspend.flag &
 		MTK_LP_REQ_NOSYSCORE_CB))
 		register_syscore_ops(&mtk_lpm_suspend);
+#ifdef CONFIG_SUSPEND
 	else
 		mem_sleep_current = PM_SUSPEND_TO_IDLE;
-
+#endif
 	return 0;
 }
 device_initcall(mtk_lpm_init);

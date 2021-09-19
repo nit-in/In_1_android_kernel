@@ -1,5 +1,6 @@
 /*
  * Copyright (C) 2016 MediaTek Inc.
+ * Copyright (C) 2021 XiaoMi, Inc.
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License version 2 as
@@ -80,23 +81,15 @@
 #include <mtk_battery_table.h>
 #include "simulator_kernel.h"
 #endif
+#include <linux/iio/consumer.h>
+#include <linux/of_platform.h> /*of_find_node_by_name*/
 
-/* prize added by chenjiaxi, battery info, 20190115-start */
-#if defined(CONFIG_PRIZE_HARDWARE_INFO_BAT)
-#include "../../../misc/mediatek/hardware_info/hardware_info.h"
-extern struct hardware_info current_battery_info;
-unsigned char s_Q_MAX_50[32] = "0";
-unsigned char s_Q_MAX_25[32] = "0";
-unsigned char s_Q_MAX_0[32] = "0";
-unsigned char s_Q_MAX_10[32] = "0";
-#endif
-/* prize added by chenjiaxi, battery info, 20190115-end */
 
 /* ============================================================ */
 /* global variable */
 /* ============================================================ */
 struct mtk_battery gm;
-
+int mtk_qmax_aging;
 /* ============================================================ */
 /* gauge hal interface */
 /* ============================================================ */
@@ -366,10 +359,11 @@ bool __attribute__ ((weak)) mt_usb_is_device(void)
 /* custom setting */
 /* ============================================================ */
 #ifdef MTK_GET_BATTERY_ID_BY_AUXADC
+int my_battery_id_voltage;
 void fgauge_get_profile_id(void)
 {
+
 	int id_volt = 0;
-	int id = 0;
 	int ret = 0;
 	int auxadc_voltage = 0;
 	struct iio_channel *channel;
@@ -380,13 +374,15 @@ void fgauge_get_profile_id(void)
 	if (!batterty_node) {
 		bm_err("[%s] of_find_node_by_name fail\n", __func__);
 		return;
-	}
+	} else
+		bm_err("[%s] find battery node success \n", __func__);
 
 	battery_dev = of_find_device_by_node(batterty_node);
 	if (!battery_dev) {
 		bm_err("[%s] of_find_device_by_node fail\n", __func__);
 		return;
-	}
+	} else
+		bm_err("[%s] find battery dev success \n", __func__);
 
 	channel = iio_channel_get(&(battery_dev->dev), "batteryID-channel");
 	if (IS_ERR(channel)) {
@@ -394,11 +390,14 @@ void fgauge_get_profile_id(void)
 		bm_err("[%s] iio channel not found %d\n",
 		__func__, ret);
 		return;
-	}
+	} else
+		bm_err("[%s] get channel success\n", __func__);
 
 	if (channel)
 		ret = iio_read_channel_processed(channel, &auxadc_voltage);
-
+	else{
+		bm_err("[%s] no channel to processed \n", __func__);
+	}
 
 	if (ret <= 0) {
 		bm_err("[%s] iio_read_channel_processed failed\n", __func__);
@@ -406,29 +405,23 @@ void fgauge_get_profile_id(void)
 	}
 
 	bm_err("[%s]auxadc_voltage is %d\n", __func__, auxadc_voltage);
-	id_volt = auxadc_voltage * 1500 / 4096;
-	bm_err("[%s]battery_id_voltage is %d\n", __func__, id_volt);
+	id_volt = (auxadc_voltage * 1500 / 4096) * 1000;
+	pr_err("[%s]battery_id_voltage is %d\n", __func__, id_volt);
 
-	if ((sizeof(g_battery_id_voltage) /
-		sizeof(int)) != TOTAL_BATTERY_NUMBER) {
-		bm_debug("[%s]error! voltage range incorrect!\n",
-			__func__);
-		return;
+	my_battery_id_voltage = id_volt;
+	if (id_volt >= NVT_MIN_VOLTAGE && id_volt <= NVT_MAX_VOLTAGE) {
+		gm.battery_id = 0;
+	} else if (id_volt >= COSMX_MIN_VOLTAGE && id_volt <= COSMX_MAX_VOLTAGE) {
+		gm.battery_id = 1;
+	} else {
+		gm.battery_id = 2;
 	}
 
-	for (id = 0; id < TOTAL_BATTERY_NUMBER; id++) {
-		if (id_volt < g_battery_id_voltage[id]) {
-			gm.battery_id = id;
-			break;
-		} else if (g_battery_id_voltage[id] == -1) {
-			gm.battery_id = TOTAL_BATTERY_NUMBER - 1;
-		}
-	}
+	pr_err("[%s]Battery id (%d) volt (%d)\n",
+		__func__, gm.battery_id, id_volt);
 
-	bm_debug("[%s]Battery id (%d)\n",
-		__func__,
-		gm.battery_id);
 }
+
 #elif defined(MTK_GET_BATTERY_ID_BY_GPIO)
 void fgauge_get_profile_id(void)
 {
@@ -918,25 +911,6 @@ static void fg_custom_parse_table(const struct device_node *np,
 		profile_p->resistance2 = resistance2;
 		idx = idx + column;
 	}
-    
-/* prize added by chenjiaxi, battery info, 20190115-start */
-#if defined(CONFIG_PRIZE_HARDWARE_INFO_BAT)
-	strcpy(current_battery_info.batt_versions, "V0.0.0");
-    if (!strcmp(node_srting, "battery0_profile_t0")) {
-        sprintf(s_Q_MAX_50,"%d",profile_p->mah);
-        strcpy(current_battery_info.Q_MAX_50, s_Q_MAX_50);
-    } else if (!strcmp(node_srting, "battery0_profile_t1")) {
-        sprintf(s_Q_MAX_25,"%d",profile_p->mah);
-        strcpy(current_battery_info.Q_MAX_25, s_Q_MAX_25);
-    } else if (!strcmp(node_srting, "battery0_profile_t3")) {
-        sprintf(s_Q_MAX_0,"%d",profile_p->mah);
-        strcpy(current_battery_info.Q_MAX_0, s_Q_MAX_0);
-    } else if (!strcmp(node_srting, "battery0_profile_t4")) {
-        sprintf(s_Q_MAX_10,"%d",profile_p->mah);
-        strcpy(current_battery_info.Q_MAX_10, s_Q_MAX_10);
-    }
-#endif
-/* prize added by chenjiaxi, battery info, 20190115-end */
 }
 
 
@@ -950,8 +924,9 @@ void fg_custom_init_from_dts(struct platform_device *dev)
 
 	fgauge_get_profile_id();
 	bat_id = gm.battery_id;
-
-	bm_err("%s\n", __func__);
+	if (bat_id >= 2)
+		bat_id = 0;
+	bm_err("%s bat_id = %d\n", __func__, bat_id);
 
 	fg_read_dts_val(np, "MULTI_BATTERY", &(multi_battery), 1);
 	fg_read_dts_val(np, "ACTIVE_TABLE", &(active_table), 1);
@@ -977,8 +952,6 @@ void fg_custom_init_from_dts(struct platform_device *dev)
 		&(fg_cust_data.shutdown_system_iboot), 1);
 
 	/*hw related */
-	fg_read_dts_val(np, "CAR_TUNE_VALUE", &(fg_cust_data.car_tune_value),
-		UNIT_TRANS_10);
 	fg_read_dts_val(np, "FG_METER_RESISTANCE",
 		&(fg_cust_data.fg_meter_resistance), 1);
 	ret = fg_read_dts_val(np, "COM_FG_METER_RESISTANCE",
@@ -2146,9 +2119,6 @@ void fg_bat_plugout_int_handler(void)
 		for (i = 0 ; i < 20 ; i++)
 			gauge_dev_dump(gm.gdev, NULL, 0);
 
-		/* TODO debug purpose, remove it!!!!!! */
-		aee_kernel_warning("GAUGE", "BAT_PLUGOUT error!\n");
-
 		if (gm.plug_miss_count >= 3) {
 			gauge_enable_interrupt(FG_BAT_PLUGOUT_NO, 0);
 			bm_err("[%s]disable FG_BAT_PLUGOUT\n",
@@ -2735,6 +2705,10 @@ void fg_daemon_comm_INT_data(char *rcv, char *ret)
 		}
 		break;
 	case FG_SET_QMAX_T_AGING:
+		{
+			mtk_qmax_aging = prcv->input;
+			pr_err("dhx--qmx = %d\n", mtk_qmax_aging);
+		}
 		break;
 	case FG_SET_SAVED_CAR:
 		{
@@ -2744,6 +2718,7 @@ void fg_daemon_comm_INT_data(char *rcv, char *ret)
 	case FG_SET_AGING_FACTOR:
 		{
 			gm.aging_factor = prcv->input;
+			pr_err("dhx--aging_factor = %d\n", gm.aging_factor);
 		}
 		break;
 	case FG_SET_QMAX:

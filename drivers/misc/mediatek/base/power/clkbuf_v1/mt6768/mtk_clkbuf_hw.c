@@ -1,5 +1,6 @@
 /*
  * Copyright (C) 2018 MediaTek Inc.
+ * Copyright (C) 2021 XiaoMi, Inc.
  *
  * This program is free software: you can redistribute it and/or modify
  * it under the terms of the GNU General Public License version 2 as
@@ -1156,6 +1157,8 @@ static ssize_t clk_buf_show_status_info_internal(char *buf)
 
 u8 clk_buf_get_xo_en_sta(enum xo_id id)
 {
+	if (id < 0 || id >= XO_NUMBER)
+		return 0;
 	clk_buf_get_xo_en();
 
 	return xo_en_stat[id];
@@ -1515,7 +1518,8 @@ void clk_buf_post_init(void)
 	CLK_BUF7_STATUS = CLOCK_BUFFER_DISABLE;
 #endif
 
-#ifndef CONFIG_NFC_CHIP_SUPPORT
+//#ifndef CONFIG_NFC_CHIP_SUPPORT
+#if 0
 	/* no need to use XO_NFC if no NFC */
 	clk_buf_ctrl_internal(CLK_BUF_NFC, CLK_BUF_FORCE_OFF);
 	CLK_BUF3_STATUS = CLOCK_BUFFER_DISABLE;

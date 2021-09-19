@@ -1,5 +1,6 @@
 /*
  * Copyright (C) 2015 MediaTek Inc.
+ * Copyright (C) 2021 XiaoMi, Inc.
  *
  * This program is free software: you can redistribute it and/or modify
  * it under the terms of the GNU General Public License version 2 as
@@ -54,7 +55,7 @@ static char *MTK_SMI_BWC_SCEN_NAME[SMI_BWC_SCEN_CNT] = {
 
 static inline char *smi_bwc_scen_name_get(const enum MTK_SMI_BWC_SCEN scen)
 {
-	if (scen < SMI_BWC_SCEN_CNT)
+	if (scen >= 0 && scen < SMI_BWC_SCEN_CNT)
 		return MTK_SMI_BWC_SCEN_NAME[scen];
 	else
 		return "SMI_BWC_SCEN_UNKNOWN";

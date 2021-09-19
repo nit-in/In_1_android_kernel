@@ -22,6 +22,7 @@ config MTK_AEE_AED
 
 config MTK_AEE_IPANIC
 	tristate "Enable AEE Kernel Panic Dump"
+	depends on MTK_RAM_CONSOLE
 	default n
 	help
 	  MTK_AEE_IPANIC is the kernel config of ipanic feature designed by
@@ -32,7 +33,7 @@ config MTK_AEE_IPANIC
 config MTK_AEE_HANG_DETECT
 	bool "hang detect monitor"
 	depends on MTK_AEE_FEATURE
-	default y
+	default n
 	help
 	  MTK_AEE_HANG_DETECT is the kernel config of hang feature
 	  designed by MTK, which is a debug feature for detecting device hang.

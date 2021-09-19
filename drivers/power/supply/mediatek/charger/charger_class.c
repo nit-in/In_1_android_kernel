@@ -1,5 +1,6 @@
 /*
  * Copyright (C) 2016 MediaTek Inc.
+ * Copyright (C) 2021 XiaoMi, Inc.
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License version 2 as
@@ -373,8 +374,7 @@ int charger_dev_enable_safety_timer(struct charger_device *chg_dev, bool en)
 	return -ENOTSUPP;
 }
 EXPORT_SYMBOL(charger_dev_enable_safety_timer);
-#ifdef CONFIG_MTK_PUMP_EXPRESS_PLUS_50_SUPPORT
-/*prize-huangjiwu-20200730, add for rt9759 pe50 start*/
+
 int charger_dev_enable_hz(struct charger_device *chg_dev, bool en)
 {
 	if (chg_dev != NULL && chg_dev->ops != NULL &&
@@ -384,8 +384,7 @@ int charger_dev_enable_hz(struct charger_device *chg_dev, bool en)
 	return -ENOTSUPP;
 }
 EXPORT_SYMBOL(charger_dev_enable_hz);
-/*prize-huangjiwu-20200730, add for rt9759 pe50 end*/
-#endif
+
 int charger_dev_get_adc(struct charger_device *charger_dev,
 	enum adc_channel chan, int *min, int *max)
 {
@@ -396,8 +395,7 @@ int charger_dev_get_adc(struct charger_device *charger_dev,
 	return -ENOTSUPP;
 }
 EXPORT_SYMBOL(charger_dev_get_adc);
-#ifdef CONFIG_MTK_PUMP_EXPRESS_PLUS_50_SUPPORT
-/*prize-huangjiwu-20200730, add for rt9759 pe50 start*/
+
 int charger_dev_get_adc_accuracy(struct charger_device *charger_dev,
 	enum adc_channel chan, int *min, int *max)
 {
@@ -409,8 +407,7 @@ int charger_dev_get_adc_accuracy(struct charger_device *charger_dev,
 	return -ENOTSUPP;
 }
 EXPORT_SYMBOL(charger_dev_get_adc_accuracy);
-/*prize-huangjiwu-20200730, add for rt9759 pe50 end*/
-#endif
+
 int charger_dev_is_safety_timer_enabled(struct charger_device *chg_dev,
 					bool *en)
 {
@@ -518,8 +515,7 @@ int charger_dev_set_direct_charging_vbusov(struct charger_device *chg_dev,
 	return -ENOTSUPP;
 }
 EXPORT_SYMBOL(charger_dev_set_direct_charging_vbusov);
-#ifdef CONFIG_MTK_PUMP_EXPRESS_PLUS_50_SUPPORT
-/*prize-huangjiwu-20200730, add for rt9759 pe50 start*/
+
 int charger_dev_set_direct_charging_ibatoc(struct charger_device *chg_dev,
 					   u32 uA)
 {
@@ -613,10 +609,17 @@ int charger_dev_init_direct_charging_chip(struct charger_device *chg_dev)
 	return -ENOTSUPP;
 }
 EXPORT_SYMBOL(charger_dev_init_direct_charging_chip);
-/*prize-huangjiwu-20200730, add for rt9759 pe50 end*/
-#endif
+
 int charger_dev_enable_chg_type_det(struct charger_device *chg_dev, bool en)
 {
+	if (chg_dev == NULL) {
+		pr_err("chg_dev is null\n");
+	} else if (chg_dev->ops == NULL) {
+		pr_err("chg_dev  ops is null\n");
+	} else if (chg_dev->ops->enable_chg_type_det == NULL) {
+		pr_err("chg_dev  ops enable chg type is null\n");
+	}
+
 	if (chg_dev != NULL && chg_dev->ops != NULL &&
 	    chg_dev->ops->enable_chg_type_det)
 		return chg_dev->ops->enable_chg_type_det(chg_dev, en);
@@ -624,6 +627,70 @@ int charger_dev_enable_chg_type_det(struct charger_device *chg_dev, bool en)
 	return -ENOTSUPP;
 }
 EXPORT_SYMBOL(charger_dev_enable_chg_type_det);
+
+int charger_dev_get_hvdcp_type(struct charger_device *chg_dev, u32 *type)
+{
+		if (chg_dev != NULL && chg_dev->ops != NULL &&
+					    chg_dev->ops->get_hvdcp_type)
+					return chg_dev->ops->get_hvdcp_type(chg_dev, type);
+
+			return -ENOTSUPP;
+}
+EXPORT_SYMBOL(charger_dev_get_hvdcp_type);
+
+int charger_dev_get_hvdcp_dpdm_status(
+			struct charger_device *chg_dev, bool *status)
+{
+		if (chg_dev != NULL && chg_dev->ops != NULL &&
+					    chg_dev->ops->get_hvdcp_type)
+					return chg_dev->ops->get_hvdcp_dpdm_status(chg_dev, status);
+
+			return -ENOTSUPP;
+}
+EXPORT_SYMBOL(charger_dev_get_hvdcp_dpdm_status);
+
+int charger_dev_set_hvdcp_dpdm(
+			struct charger_device *chg_dev)
+{
+		if (chg_dev != NULL && chg_dev->ops != NULL &&
+					    chg_dev->ops->get_hvdcp_type)
+					return chg_dev->ops->set_hvdcp_dpdm(chg_dev);
+
+			return -ENOTSUPP;
+}
+EXPORT_SYMBOL(charger_dev_set_hvdcp_dpdm);
+
+int charger_dev_set_suspend(struct charger_device *chg_dev, bool en)
+{
+	if (chg_dev != NULL && chg_dev->ops != NULL &&
+					    chg_dev->ops->set_suspend)
+					return chg_dev->ops->set_suspend(chg_dev, en);
+
+			return -ENOTSUPP;
+}
+EXPORT_SYMBOL(charger_dev_set_suspend);
+
+int charger_dev_enable_hvdcp_det(
+			struct charger_device *chg_dev, bool enable)
+{
+		if (chg_dev != NULL && chg_dev->ops != NULL &&
+					    chg_dev->ops->enable_hvdcp_det)
+					return chg_dev->ops->enable_hvdcp_det(chg_dev, enable);
+
+			return -ENOTSUPP;
+}
+EXPORT_SYMBOL(charger_dev_enable_hvdcp_det);
+
+int charger_dev_check_hv_charging(
+			struct charger_device *chg_dev)
+{
+		if (chg_dev != NULL && chg_dev->ops != NULL &&
+					    chg_dev->ops->check_hv_charging)
+					return chg_dev->ops->check_hv_charging(chg_dev);
+
+			return -ENOTSUPP;
+}
+EXPORT_SYMBOL(charger_dev_check_hv_charging);
 
 int charger_dev_enable_otg(struct charger_device *chg_dev, bool en)
 {
@@ -643,6 +710,26 @@ int charger_dev_enable_discharge(struct charger_device *chg_dev, bool en)
 	return -ENOTSUPP;
 }
 EXPORT_SYMBOL(charger_dev_enable_discharge);
+
+int charger_dev_set_otg_current(struct charger_device *chg_dev, u32 uA)
+{
+	if (chg_dev != NULL && chg_dev->ops != NULL &&
+	    chg_dev->ops->set_otg_current)
+		return chg_dev->ops->set_otg_current(chg_dev, uA);
+
+	return -ENOTSUPP;
+}
+EXPORT_SYMBOL(charger_dev_set_otg_current);
+
+int charger_dev_get_charger_type(struct charger_device *chg_dev, u32 *type)
+{
+	if (chg_dev != NULL && chg_dev->ops != NULL &&
+	    chg_dev->ops->get_charger_type)
+		return chg_dev->ops->get_charger_type(chg_dev, type);
+
+	return -ENOTSUPP;
+}
+EXPORT_SYMBOL(charger_dev_get_charger_type);
 
 int charger_dev_set_boost_current_limit(struct charger_device *chg_dev, u32 uA)
 {
@@ -774,6 +861,18 @@ int charger_dev_enable_hidden_mode(struct charger_device *charger_dev, bool en)
 }
 EXPORT_SYMBOL(charger_dev_enable_hidden_mode);
 
+int charger_dev_enable_bleed_discharge(struct charger_device *charger_dev,
+				       bool en)
+{
+	if (charger_dev != NULL && charger_dev->ops != NULL &&
+				       charger_dev->ops->enable_bleed_discharge)
+		return charger_dev->ops->enable_bleed_discharge(charger_dev,
+								en);
+
+	return -ENOTSUPP;
+}
+EXPORT_SYMBOL(charger_dev_enable_bleed_discharge);
+
 static DEVICE_ATTR(name, 0444, charger_show_name, NULL);
 
 static struct attribute *charger_class_attrs[] = {
@@ -824,26 +923,29 @@ struct charger_device *charger_device_register(const char *name,
 		const struct charger_ops *ops,
 		const struct charger_properties *props)
 {
-	struct charger_device *chg_dev;
+	struct charger_device *chg_dev = NULL;
 	static struct lock_class_key key;
-	struct srcu_notifier_head *head;
+	struct srcu_notifier_head *head = NULL;
 	int rc;
+	char *charger_name = NULL;
 
 	pr_debug("%s: name=%s\n", __func__, name);
 	chg_dev = kzalloc(sizeof(*chg_dev), GFP_KERNEL);
 	if (!chg_dev)
 		return ERR_PTR(-ENOMEM);
 
-	mutex_init(&chg_dev->ops_lock);
-	chg_dev->dev.class = charger_class;
-	chg_dev->dev.parent = parent;
-	chg_dev->dev.release = charger_device_release;
-	dev_set_name(&chg_dev->dev, name);
-	dev_set_drvdata(&chg_dev->dev, devdata);
 	head = &chg_dev->evt_nh;
 	srcu_init_notifier_head(head);
 	/* Rename srcu's lock to avoid LockProve warning */
 	lockdep_init_map(&(&head->srcu)->dep_map, name, &key, 0);
+	mutex_init(&chg_dev->ops_lock);
+	chg_dev->dev.class = charger_class;
+	chg_dev->dev.parent = parent;
+	chg_dev->dev.release = charger_device_release;
+	charger_name = kasprintf(GFP_KERNEL, "%s", name);
+	dev_set_name(&chg_dev->dev, "%s", charger_name);
+	dev_set_drvdata(&chg_dev->dev, devdata);
+	kfree(charger_name);
 
 	/* Copy properties */
 	if (props) {
@@ -891,7 +993,7 @@ static int charger_match_device_by_name(struct device *dev,
 
 struct charger_device *get_charger_by_name(const char *name)
 {
-	struct device *dev;
+	struct device *dev = NULL;
 
 	if (!name)
 		return (struct charger_device *)NULL;

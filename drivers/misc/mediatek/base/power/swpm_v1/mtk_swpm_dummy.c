@@ -1,5 +1,6 @@
 /*
  * Copyright (C) 2017 MediaTek Inc.
+ * Copyright (C) 2021 XiaoMi, Inc.
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License version 2 as
@@ -12,7 +13,7 @@
  */
 #include <mtk_swpm_common.h>
 #include <mtk_swpm_platform.h>
-#include <mtk_swpm.h>
+#include <mtk_swpm_interface.h>
 
 unsigned int swpm_get_avg_power(enum power_rail type, unsigned int avg_window)
 {

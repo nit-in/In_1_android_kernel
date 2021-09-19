@@ -1,5 +1,6 @@
 /*
  * Copyright (C) 2018 MediaTek, Inc.
+ * Copyright (C) 2021 XiaoMi, Inc.
  * Author: Wilma Wu <wilma.wu@mediatek.com>
  *
  * This software is licensed under the terms of the GNU General Public
@@ -42,6 +43,7 @@
 #include <linux/cpumask.h>
 #include "../misc/mediatek/include/mt-plat/mtk_boot_common.h"
 #include "../misc/mediatek/include/mt-plat/mtk_reboot.h"
+#include <linux/debugfs.h>
 
 #ifdef pr_fmt
 #undef pr_fmt
@@ -190,6 +192,7 @@ struct mt6358_rtc {
 	struct completion comp;
 };
 static struct mt6358_rtc *mt_rtc;
+static struct wakeup_source *mt6358_rtc_suspend_lock;
 
 static int rtc_show_time;
 static int rtc_show_alarm = 1;
@@ -198,9 +201,67 @@ static int apply_lpsd_solution;
 static bool rtc_pm_notifier_registered;
 static bool kpoc_alarm;
 static unsigned long rtc_pm_status;
+static int alarm1m15s;
 
 module_param(rtc_show_time, int, 0644);
 module_param(rtc_show_alarm, int, 0644);
+
+static int rtc_alarm_enabled = 1;
+
+static ssize_t mtk_rtc_debug_write(struct file *file,
+	const char __user *buf, size_t size, loff_t *ppos)
+{
+	char lbuf[128];
+	char option[16];
+	int setting;
+	ssize_t res;
+
+	if (*ppos != 0 || size >= sizeof(lbuf) || size == 0)
+		return -EINVAL;
+
+	res = simple_write_to_buffer(lbuf, sizeof(lbuf) - 1, ppos, buf, size);
+	if (res <= 0)
+		return -EFAULT;
+	lbuf[size] = '\0';
+
+	if (sscanf(lbuf, "%15s %d", option, &setting) != 2) {
+		pr_notice("Invalid para %s\n", lbuf);
+		return -EFAULT;
+	}
+
+	if (!strncmp(option, "alarm", strlen("alarm"))) {
+		pr_notice("alarm = %d\n", setting);
+		rtc_alarm_enabled = setting;
+		if (rtc_alarm_enabled)
+			enable_irq(mt_rtc->irq);
+		else
+			disable_irq_nosync(mt_rtc->irq);
+	}
+
+	return size;
+}
+
+static int mtk_rtc_debug_show(struct seq_file *s, void *unused)
+{
+	seq_printf(s, "rtc alarm %s\n",
+		rtc_alarm_enabled ? "enabled" : "disabled");
+
+	return 0;
+}
+
+static int mtk_rtc_debug_open(struct inode *inode,
+						struct file *file)
+{
+	return single_open(file, mtk_rtc_debug_show, NULL);
+}
+
+static const struct file_operations mtk_rtc_debug_ops = {
+	.open    = mtk_rtc_debug_open,
+	.read    = seq_read,
+	.write   = mtk_rtc_debug_write,
+	.llseek  = seq_lseek,
+	.release = single_release,
+};
 
 
 
@@ -581,7 +642,7 @@ static void mtk_rtc_work_queue(struct work_struct *work)
 
 static void mtk_rtc_reboot(void)
 {
-	pm_stay_awake(mt_rtc->dev);
+	__pm_stay_awake(mt6358_rtc_suspend_lock);
 
 	init_completion(&mt_rtc->comp);
 	schedule_work_on(cpumask_first(cpu_online_mask), &mt_rtc->work);
@@ -737,9 +798,20 @@ static irqreturn_t mtk_rtc_irq_handler(int irq, void *data)
 		now_time =
 		    mktime(nowtm.tm_year, nowtm.tm_mon, nowtm.tm_mday,
 			   nowtm.tm_hour, nowtm.tm_min, nowtm.tm_sec);
+
+		if (now_time == -1) {
+			spin_unlock_irqrestore(&mt_rtc->lock, flags);
+			goto out;
+		}
+
 		time =
 		    mktime(tm.tm_year, tm.tm_mon, tm.tm_mday, tm.tm_hour,
 			   tm.tm_min, tm.tm_sec);
+
+		if (time == -1) {
+			spin_unlock_irqrestore(&mt_rtc->lock, flags);
+			goto out;
+		}
 
 		/* power on */
 		if (now_time >= time - 1 && now_time <= time + 4) {
@@ -923,6 +995,9 @@ static int rtc_ops_set_alarm(struct device *dev, struct rtc_wkalrm *alm)
 		target = rtc_tm_to_ktime(tm);
 		target = ktime_add_ns(target, NSEC_PER_SEC);
 		tm = rtc_ktime_to_tm(target);
+	} else if (alm->enabled == 5) {
+		/* Power on system 1 minute earlier */
+		alarm1m15s = 1;
 	}
 
 	tm.tm_year -= RTC_MIN_YEAR_OFFSET;
@@ -935,10 +1010,12 @@ static int rtc_ops_set_alarm(struct device *dev, struct rtc_wkalrm *alm)
 	spin_lock_irqsave(&rtc->lock, flags);
 	if (alm->enabled == 2) {	/* enable power-on alarm */
 		ret = mtk_rtc_set_pwron_alarm(true, &tm, false);
-	} else if (alm->enabled == 3) {	/* enable power-on alarm with logo */
+	} else if (alm->enabled == 3 || alm->enabled == 5) {
+		/* enable power-on alarm with logo */
 		ret = mtk_rtc_set_pwron_alarm(true, &tm, true);
 	} else if (alm->enabled == 4) {	/* disable power-on alarm */
 		ret = mtk_rtc_set_pwron_alarm(false, &tm, false);
+		alarm1m15s = 0;
 	}
 	if (ret < 0)
 		goto exit;
@@ -1004,6 +1081,8 @@ static int mtk_rtc_pdrv_probe(struct platform_device *pdev)
 	struct mt6358_rtc *rtc;
 	unsigned long flags;
 	int ret;
+	struct dentry *mtk_rtc_dir;
+	struct dentry *mtk_rtc_file;
 
 	rtc = devm_kzalloc(&pdev->dev, sizeof(struct mt6358_rtc), GFP_KERNEL);
 	if (!rtc)
@@ -1051,6 +1130,9 @@ static int mtk_rtc_pdrv_probe(struct platform_device *pdev)
 
 	device_init_wakeup(&pdev->dev, 1);
 
+	mt6358_rtc_suspend_lock =
+		wakeup_source_register(NULL, "mt6358-rtc suspend wakelock");
+
 	/* register rtc device (/dev/rtc0) */
 	rtc->rtc_dev = rtc_device_register(RTC_NAME,
 					&pdev->dev, &rtc_ops, THIS_MODULE);
@@ -1063,6 +1145,20 @@ static int mtk_rtc_pdrv_probe(struct platform_device *pdev)
 	if (of_property_read_bool(pdev->dev.of_node, "apply-lpsd-solution")) {
 		apply_lpsd_solution = 1;
 		pr_notice("%s: apply_lpsd_solution\n", __func__);
+	}
+
+	mtk_rtc_dir = debugfs_create_dir("mtk_rtc", NULL);
+	if (!mtk_rtc_dir) {
+		pr_err("create /sys/kernel/debug/mtk_rtc_dir failed\n");
+		//return -ENOMEM;
+	}
+
+	mtk_rtc_file = debugfs_create_file("mtk_rtc", 0644,
+				mtk_rtc_dir, NULL,
+				&mtk_rtc_debug_ops);
+	if (!mtk_rtc_file) {
+		pr_err("create /sys/kernel/debug/mtk_rtc/mtk_rtc failed\n");
+		//return -ENOMEM;
 	}
 
 #ifdef CONFIG_PM
@@ -1091,7 +1187,71 @@ static int mtk_rtc_pdrv_remove(struct platform_device *pdev)
 	return 0;
 }
 
+static void mtk_rtc_pdrv_shutdown(struct platform_device *pdev)
+{
+	struct rtc_time rtc_time_now;
+	struct rtc_time rtc_time_alarm;
+	ktime_t ktime_now;
+	ktime_t ktime_alarm;
+	bool is_pwron_alarm;
+
+	if (alarm1m15s == 1) {
+		is_pwron_alarm = mtk_rtc_is_pwron_alarm(&rtc_time_now,
+			&rtc_time_alarm);
+		if (is_pwron_alarm) {
+			rtc_time_now.tm_year += RTC_MIN_YEAR_OFFSET;
+			rtc_time_now.tm_mon--;
+			rtc_time_alarm.tm_year += RTC_MIN_YEAR_OFFSET;
+			rtc_time_alarm.tm_mon--;
+			pr_notice("now = %04d/%02d/%02d %02d:%02d:%02d\n",
+				rtc_time_now.tm_year + 1900,
+				rtc_time_now.tm_mon + 1,
+				rtc_time_now.tm_mday,
+				rtc_time_now.tm_hour,
+				rtc_time_now.tm_min,
+				rtc_time_now.tm_sec);
+			pr_notice("alarm = %04d/%02d/%02d %02d:%02d:%02d\n",
+				rtc_time_alarm.tm_year + 1900,
+				rtc_time_alarm.tm_mon + 1,
+				rtc_time_alarm.tm_mday,
+				rtc_time_alarm.tm_hour,
+				rtc_time_alarm.tm_min,
+				rtc_time_alarm.tm_sec);
+			ktime_now = rtc_tm_to_ktime(rtc_time_now);
+			ktime_alarm = rtc_tm_to_ktime(rtc_time_alarm);
+			if (ktime_after(ktime_alarm, ktime_now)) {
+				/* alarm has not happened */
+				ktime_alarm = ktime_sub_ms(ktime_alarm,
+					MSEC_PER_SEC * 60);
+				if (ktime_after(ktime_alarm, ktime_now))
+					pr_notice("Alarm will happen after 1 minute\n");
+				else {
+					ktime_alarm = ktime_add_ms(ktime_now,
+						MSEC_PER_SEC * 15);
+					pr_notice("Alarm will happen in 15 seconds\n");
+				}
+				rtc_time_alarm = rtc_ktime_to_tm(ktime_alarm);
+				pr_notice("new alarm = %04d/%02d/%02d %02d:%02d:%02d\n",
+					rtc_time_alarm.tm_year + 1900,
+					rtc_time_alarm.tm_mon + 1,
+					rtc_time_alarm.tm_mday,
+					rtc_time_alarm.tm_hour,
+					rtc_time_alarm.tm_min,
+					rtc_time_alarm.tm_sec);
+				rtc_time_alarm.tm_year -= RTC_MIN_YEAR_OFFSET;
+				rtc_time_alarm.tm_mon++;
+				mtk_rtc_set_pwron_alarm_time(&rtc_time_alarm);
+				mtk_rtc_set_alarm(&rtc_time_alarm);
+			} else
+				pr_notice("Alarm has happened before\n");
+		} else
+			pr_notice("No power-off alarm is set\n");
+	}
+
+}
+
 static const struct of_device_id mt6358_rtc_of_match[] = {
+	{ .compatible = "mediatek,mt6357-rtc", },
 	{ .compatible = "mediatek,mt6358-rtc", },
 	{ .compatible = "mediatek,mt6359-rtc", },
 	{ }
@@ -1101,6 +1261,7 @@ MODULE_DEVICE_TABLE(of, mt6358_rtc_of_match);
 static struct platform_driver mtk_rtc_pdrv = {
 	.probe = mtk_rtc_pdrv_probe,
 	.remove = mtk_rtc_pdrv_remove,
+	.shutdown = mtk_rtc_pdrv_shutdown,
 	.driver = {
 		   .name = RTC_NAME,
 		   .owner = THIS_MODULE,

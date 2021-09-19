@@ -20,12 +20,7 @@ struct mtk_spk_i2c_ctrl {
 #define MTK_SPK_RICHTEK_RT5509_STR "MTK_SPK_RICHTEK_RT5509"
 #define MTK_SPK_MEDIATEK_MT6660_STR "MTK_SPK_MEDIATEK_MT6660"
 #define MTK_SPK_NXP_TFA98XX_STR "MTK_SPK_NXP_TFAXXXX"
-/* prize modified by lifenfen, add awinic smartpa aw8898, 20200103 begin */
-#define MTK_SPK_AWINIC_AW8898_STR "MTK_SPK_AWINIC_AW8898"
-/* prize modified by lifenfen, add awinic smartpa aw8898, 20200103 end */
-/* prize modified by wyq, add awinic smartpa aw881xx, 20200103 begin */
-#define MTK_SPK_AWINIC_AW881XX_STR "MTK_SPK_AWINIC_AW881XX"
-/* prize modified by wyq, add awinic smartpa aw881xx, 20200103 end */
+
 #define MTK_SPK_I2S_0_STR "MTK_SPK_I2S_0"
 #define MTK_SPK_I2S_1_STR "MTK_SPK_I2S_1"
 #define MTK_SPK_I2S_2_STR "MTK_SPK_I2S_2"
@@ -42,12 +37,6 @@ enum mtk_spk_type {
 	MTK_SPK_RICHTEK_RT5509,
 	MTK_SPK_MEDIATEK_MT6660,
 	MTK_SPK_NXP_TFA98XX,
-/* prize modified by lifenfen, add awinic smartpa aw8898, 20200103 begin */
-	MTK_SPK_AWINIC_AW8898,
-/* prize modified by lifenfen, add awinic smartpa aw8898, 20200103 end */
-/* prize modified by wyq, add awinic smartpa aw881xx, 20200103 begin */
-	MTK_SPK_AWINIC_AW881XX,
-/* prize modified by wyq, add awinic smartpa aw881xx, 20200103 end */
 	MTK_SPK_TYPE_NUM
 };
 
@@ -77,6 +66,12 @@ enum mtk_spk_i2s_type {
 int mtk_spk_get_type(void);
 int mtk_spk_get_i2s_out_type(void);
 int mtk_spk_get_i2s_in_type(void);
+int mtk_ext_spk_get_status(void);
+void mtk_ext_spk_enable(int enable);
+int mtk_spk_update_info(struct snd_soc_card *card,
+			struct platform_device *pdev,
+			int *spk_out_dai_link_idx, int *spk_ref_dai_link_idx,
+			const struct snd_soc_ops *i2s_ops);
 int mtk_spk_update_dai_link(struct snd_soc_card *card,
 			    struct platform_device *pdev,
 			    const struct snd_soc_ops *i2s_ops);

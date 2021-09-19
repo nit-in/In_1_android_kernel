@@ -1,5 +1,6 @@
 /*
  * Copyright (C) 2010 MediaTek, Inc.
+ * Copyright (C) 2021 XiaoMi, Inc.
  *
  * Author: Terry Chang <terry.chang@mediatek.com>
  *
@@ -15,16 +16,15 @@
  */
 
 #include "kpd.h"
-#ifdef CONFIG_PM_WAKELOCKS
+#ifdef CONFIG_PM_SLEEP
 #include <linux/pm_wakeup.h>
-#else
-#include <linux/wakelock.h>
 #endif
 #include <linux/of.h>
 #include <linux/of_address.h>
 #include <linux/of_irq.h>
 #include <linux/clk.h>
 #include <linux/debugfs.h>
+#include <linux/pinctrl/consumer.h>
 
 #define KPD_NAME	"mtk-kpd"
 
@@ -40,16 +40,15 @@ struct input_dev *kpd_input_dev;
 static struct dentry *kpd_droot;
 static struct dentry *kpd_dklog;
 unsigned long call_status;
+unsigned long long_press_is_reboot = 1;
 static bool kpd_suspend;
 static unsigned int kp_irqnr;
 static u32 kpd_keymap[KPD_NUM_KEYS];
 static u16 kpd_keymap_state[KPD_NUM_MEMS];
 
 struct input_dev *kpd_input_dev;
-#ifdef CONFIG_PM_WAKELOCKS
+#ifdef CONFIG_PM_SLEEP
 struct wakeup_source kpd_suspend_lock;
-#else
-struct wake_lock kpd_suspend_lock;
 #endif
 struct keypad_dts_data kpd_dts_data;
 
@@ -62,6 +61,8 @@ static int kpd_pdrv_probe(struct platform_device *pdev);
 static int kpd_pdrv_suspend(struct platform_device *pdev, pm_message_t state);
 static int kpd_pdrv_resume(struct platform_device *pdev);
 static struct platform_driver kpd_pdrv;
+
+extern void long_press_reboot(unsigned long long_press_is_reboot);
 
 static void kpd_memory_setting(void)
 {
@@ -108,8 +109,32 @@ static ssize_t kpd_call_state_show(struct device_driver *ddri, char *buf)
 }
 
 static DRIVER_ATTR_RW(kpd_call_state);
+
+static ssize_t kpd_long_press_is_reboot_store(struct device_driver *ddri,
+		const char *buf, size_t count)
+{
+	int ret;
+
+	ret = kstrtoul(buf, 10, &long_press_is_reboot);
+
+	long_press_reboot(long_press_is_reboot);
+
+	return count;
+}
+
+static ssize_t kpd_long_press_is_reboot_show(struct device_driver *ddri, char *buf)
+{
+	ssize_t res;
+
+	res = snprintf(buf, PAGE_SIZE, "%ld\n", long_press_is_reboot);
+	return res;
+}
+
+static DRIVER_ATTR(kpd_long_press_is_reboot, 0664, kpd_long_press_is_reboot_show, kpd_long_press_is_reboot_store);
+
 static struct driver_attribute *kpd_attr_list[] = {
 	&driver_attr_kpd_call_state,
+	&driver_attr_kpd_long_press_is_reboot,
 };
 
 
@@ -186,10 +211,8 @@ static void kpd_keymap_handler(unsigned long data)
 	void *dest;
 
 	kpd_get_keymap_state(new_state);
-#ifdef CONFIG_PM_WAKELOCKS
+#ifdef CONFIG_PM_SLEEP
 	__pm_wakeup_event(&kpd_suspend_lock, 500);
-#else
-	wake_lock_timeout(&kpd_suspend_lock, HZ / 2);
 #endif
 	for (i = 0; i < KPD_NUM_MEMS; i++) {
 		change = new_state[i] ^ kpd_keymap_state[i];
@@ -428,10 +451,8 @@ static int kpd_pdrv_probe(struct platform_device *pdev)
 		kpd_notice("register input device failed (%d)\n", err);
 		return err;
 	}
-#ifdef CONFIG_PM_WAKELOCKS
+#ifdef CONFIG_PM_SLEEP
 	wakeup_source_init(&kpd_suspend_lock, "kpd wakelock");
-#else
-	wake_lock_init(&kpd_suspend_lock, WAKE_LOCK_SUSPEND, "kpd wakelock");
 #endif
 	/* register IRQ and EINT */
 	kpd_set_debounce(kpd_dts_data.kpd_key_debounce);
@@ -442,6 +463,10 @@ static int kpd_pdrv_probe(struct platform_device *pdev)
 		input_unregister_device(kpd_input_dev);
 		return err;
 	}
+
+	if (enable_irq_wake(kp_irqnr) < 0)
+		kpd_notice("irq %d enable irq wake fail\n", kp_irqnr);
+
 #ifdef CONFIG_MTK_MRDUMP_KEY
 	mt_eint_register();
 #endif

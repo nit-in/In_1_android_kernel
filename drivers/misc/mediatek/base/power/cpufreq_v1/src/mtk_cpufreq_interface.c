@@ -1,5 +1,6 @@
 /*
  * Copyright (C) 2016 MediaTek Inc.
+ * Copyright (C) 2021 XiaoMi, Inc.
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License version 2 as
@@ -18,6 +19,10 @@
 #include "mtk_cpufreq_internal.h"
 #include "mtk_cpufreq_hybrid.h"
 #include "mtk_cpufreq_platform.h"
+
+#ifdef CONFIG_MTK_CPU_MSSV
+extern unsigned int cpumssv_get_state(void);
+#endif
 
 unsigned int func_lv_mask;
 unsigned int do_dvfs_stress_test;
@@ -228,6 +233,9 @@ static int cpufreq_freq_proc_show(struct seq_file *m, void *v)
 	struct mt_cpu_dvfs *p = m->private;
 	struct pll_ctrl_t *pll_p = id_to_pll_ctrl(p->Pll_id);
 
+	if (pll_p == NULL)
+		return 0;
+
 	seq_printf(m, "%d KHz\n", pll_p->pll_ops->get_cur_freq(pll_p));
 
 	return 0;
@@ -251,6 +259,40 @@ static ssize_t cpufreq_freq_proc_write(struct file *file,
 		tag_pr_info
 		("echo khz > /proc/cpufreq/%s/cpufreq_freq\n", p->name);
 	} else {
+#ifdef CONFIG_MTK_CPU_MSSV
+		if (!cpumssv_get_state()) {
+			for (i = 0; i < p->nr_opp_tbl; i++) {
+				if (freq == p->opp_tbl[i].cpufreq_khz) {
+					found = 1;
+					break;
+				}
+			}
+		} else if (freq > 0)
+			found = 1;
+
+		if (found == 1) {
+			p->dvfs_disable_by_procfs = true;
+  #ifdef CONFIG_HYBRID_CPU_DVFS
+			if (!cpu_dvfs_is(p, MT_CPU_DVFS_CCI))
+    #ifdef SINGLE_CLUSTER
+				cpuhvfs_set_freq(cpufreq_get_cluster_id(
+					p->cpu_id), freq);
+    #else
+				cpuhvfs_set_freq(arch_get_cluster_id(
+					p->cpu_id), freq);
+    #endif
+			else
+				cpuhvfs_set_freq(MT_CPU_DVFS_CCI, freq);
+  #else
+			_mt_cpufreq_dvfs_request_wrapper(p,
+					i, MT_CPU_DVFS_NORMAL, NULL);
+  #endif
+		} else {
+			p->dvfs_disable_by_procfs = false;
+			tag_pr_info(
+		"frequency %dKHz! is not found in CPU opp table\n", freq);
+			}
+#else
 		if (freq < p->opp_tbl[p->nr_opp_tbl - 1].cpufreq_khz) {
 			if (freq != 0)
 				tag_pr_info
@@ -284,6 +326,7 @@ static ssize_t cpufreq_freq_proc_write(struct file *file,
 					    freq);
 			}
 		}
+#endif
 	}
 
 	free_page((unsigned long)buf);
@@ -299,6 +342,8 @@ static int cpufreq_volt_proc_show(struct seq_file *m, void *v)
 	struct buck_ctrl_t *vsram_p = id_to_buck_ctrl(p->Vsram_buck_id);
 	unsigned long flags;
 
+	if (vproc_p == NULL || vsram_p == NULL)
+		return 0;
 	cpufreq_lock(flags);
 	seq_printf(m, "Vproc: %d uV\n",
 		vproc_p->buck_ops->get_cur_volt(vproc_p) * 10);
@@ -334,11 +379,15 @@ static ssize_t cpufreq_volt_proc_write(struct file *file,
 		p->dvfs_disable_by_procfs = true;
 		cpufreq_lock(flags);
 #ifdef CONFIG_HYBRID_CPU_DVFS
-#if 0
+#ifdef CONFIG_MTK_CPU_MSSV
 		if (!cpu_dvfs_is(p, MT_CPU_DVFS_CCI))
+#ifdef SINGLE_CLUSTER
 			cpuhvfs_set_volt(
-				cpufreq_get_cluster_id(p->cpu_id),
-				uv / 10);
+				cpufreq_get_cluster_id(p->cpu_id), uv/10);
+#else
+			cpuhvfs_set_volt(
+				arch_get_cluster_id(p->cpu_id), uv/10);
+#endif
 #endif
 #else
 		vproc_p->fix_volt = uv / 10;
@@ -579,6 +628,8 @@ static ssize_t cpufreq_cci_mode_proc_write(struct file *file,
 #endif
 	}
 
+	free_page((unsigned long)buf);
+
 	return count;
 }
 #endif
@@ -675,6 +726,16 @@ static ssize_t cpufreq_imax_thermal_protect_proc_write(struct file *file,
 
 #endif
 
+unsigned long cpufreq_max_freq;
+static int cpumaxfreq_proc_show(struct seq_file *m, void *v)
+{
+	unsigned long freq = 0;
+	/* freq (kHz) */
+	freq = cpufreq_max_freq / 1000;
+	seq_printf(m, "%lu.%02lu", freq / 1000, freq % 100);
+	return 0;
+}
+
 PROC_FOPS_RW(cpufreq_debug);
 PROC_FOPS_RW(cpufreq_stress_test);
 PROC_FOPS_RW(cpufreq_power_mode);
@@ -694,6 +755,7 @@ PROC_FOPS_RW(cpufreq_oppidx);
 PROC_FOPS_RW(cpufreq_freq);
 PROC_FOPS_RW(cpufreq_volt);
 PROC_FOPS_RW(cpufreq_turbo_mode);
+PROC_FOPS_RO(cpumaxfreq);
 
 int cpufreq_procfs_init(void)
 {
@@ -732,6 +794,8 @@ int cpufreq_procfs_init(void)
 		PROC_ENTRY(cpufreq_turbo_mode),
 	};
 
+	const struct pentry cpumaxfreq_entry = PROC_ENTRY(cpumaxfreq);
+
 	dir = proc_mkdir("cpufreq", NULL);
 
 	if (!dir) {
@@ -746,6 +810,12 @@ int cpufreq_procfs_init(void)
 			tag_pr_notice("%s(), create /proc/cpufreq/%s failed\n",
 				__func__, entries[i].name);
 	}
+	if (!proc_create("cpumaxfreq", 0444, NULL, cpumaxfreq_entry.fops))
+		tag_pr_notice("%s(), create /proc/%s failed\n",
+				__func__, cpumaxfreq_entry.name);
+	else
+		tag_pr_notice("%s(), create /proc/%s success\n",
+				__func__, cpumaxfreq_entry.name);
 
 	for_each_cpu_dvfs(j, p) {
 		cpu_dir = proc_mkdir(p->name, dir);

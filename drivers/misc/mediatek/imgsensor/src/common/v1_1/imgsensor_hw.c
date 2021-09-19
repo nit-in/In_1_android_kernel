@@ -1,5 +1,6 @@
 /*
  * Copyright (C) 2017 MediaTek Inc.
+ * Copyright (C) 2021 XiaoMi, Inc.
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License version 2 as
@@ -19,10 +20,7 @@
 
 #include "imgsensor_sensor.h"
 #include "imgsensor_hw.h"
-/*prize add by zhuzhengjiang for compate with main & sub is 3p9 2019618 start*/
-int curr_sensor_id =0;
-/*prize add by zhuzhengjiang for compate with main & sub is 3p9 2019618 end*/
-extern void AFRegulatorCtrl(int Stage); //prize  add  by zhuzhengjiang  for imx476 otp 20191227-begin
+
 enum IMGSENSOR_RETURN imgsensor_hw_init(struct IMGSENSOR_HW *phw)
 {
 	struct IMGSENSOR_HW_SENSOR_POWER      *psensor_pwr;
@@ -112,9 +110,6 @@ static enum IMGSENSOR_RETURN imgsensor_hw_power_sequence(
 	int                               pin_cnt = 0;
 
 	static DEFINE_RATELIMIT_STATE(ratelimit, 1 * HZ, 30);
-	/*prize add by zhuzhengjiang for compate with main & sub is 3p9 2019618 start*/
-	curr_sensor_id = (int)sensor_idx;
-	/*prize add by zhuzhengjiang for compate with main & sub is 3p9 2019618 end*/
 
 #ifdef CONFIG_FPGA_EARLY_PORTING  /*for FPGA*/
 	if (1) {
@@ -150,10 +145,11 @@ static enum IMGSENSOR_RETURN imgsensor_hw_power_sequence(
 
 				if (__ratelimit(&ratelimit))
 					PK_DBG(
-					"sensor_idx %d, ppwr_info->pin %d, ppwr_info->pin_state_on %d",
+					"sensor_idx %d, ppwr_info->pin %d, ppwr_info->pin_state_on %d, delay %u",
 					sensor_idx,
 					ppwr_info->pin,
-					ppwr_info->pin_state_on);
+					ppwr_info->pin_state_on,
+					ppwr_info->pin_on_delay);
 
 				if (pdev->set != NULL)
 					pdev->set(pdev->pinstance,
@@ -175,10 +171,11 @@ static enum IMGSENSOR_RETURN imgsensor_hw_power_sequence(
 
 			if (__ratelimit(&ratelimit))
 				PK_DBG(
-				"sensor_idx %d, ppwr_info->pin %d, ppwr_info->pin_state_off %d",
+				"sensor_idx %d, ppwr_info->pin %d, ppwr_info->pin_state_off %d, delay %u",
 				sensor_idx,
 				ppwr_info->pin,
-				ppwr_info->pin_state_off);
+				ppwr_info->pin_state_off,
+				ppwr_info->pin_on_delay);
 
 			if (ppwr_info->pin != IMGSENSOR_HW_PIN_UNDEF) {
 				pdev =
@@ -202,6 +199,7 @@ enum IMGSENSOR_RETURN imgsensor_hw_power(
 		struct IMGSENSOR_SENSOR *psensor,
 		enum IMGSENSOR_HW_POWER_STATUS pwr_status)
 {
+	int ret = 0;
 	enum IMGSENSOR_SENSOR_IDX sensor_idx = psensor->inst.sensor_idx;
 	char *curr_sensor_name = psensor->inst.psensor_list->name;
 	char str_index[LENGTH_FOR_SNPRINTF];
@@ -210,26 +208,20 @@ enum IMGSENSOR_RETURN imgsensor_hw_power(
 		sensor_idx,
 		pwr_status,
 		curr_sensor_name,
-		phw->enable_sensor_by_index[sensor_idx] == NULL
+		phw->enable_sensor_by_index[(uint32_t)sensor_idx] == NULL
 		? "NULL"
-		: phw->enable_sensor_by_index[sensor_idx]);
+		: phw->enable_sensor_by_index[(uint32_t)sensor_idx]);
 
-	if (phw->enable_sensor_by_index[sensor_idx] &&
-	!strstr(phw->enable_sensor_by_index[sensor_idx], curr_sensor_name))
+	if (phw->enable_sensor_by_index[(uint32_t)sensor_idx] &&
+	!strstr(phw->enable_sensor_by_index[(uint32_t)sensor_idx], curr_sensor_name))
 		return IMGSENSOR_RETURN_ERROR;
 
-
-	snprintf(str_index, sizeof(str_index), "%d", sensor_idx);
-	//prize  add  by zhuzhengjiang  for imx476 otp 2019127-begin
-	if(pwr_status == IMGSENSOR_HW_POWER_STATUS_ON && (sensor_idx == IMGSENSOR_SENSOR_IDX_SUB2 ||sensor_idx == IMGSENSOR_SENSOR_IDX_MAIN))
-	{
-		AFRegulatorCtrl(1);////prize  add  by zhuzhengjiang  for imx476 otp 2019127-begin
+	ret = snprintf(str_index, sizeof(str_index), "%d", sensor_idx);
+	if (ret < 0) {
+		pr_info("Error! snprintf allocate 0");
+		ret = IMGSENSOR_RETURN_ERROR;
+		return ret;
 	}
-	else if(pwr_status == IMGSENSOR_HW_POWER_STATUS_OFF && (sensor_idx == IMGSENSOR_SENSOR_IDX_SUB2 ||sensor_idx == IMGSENSOR_SENSOR_IDX_MAIN))
-	{
-		AFRegulatorCtrl(2);
-	}
-	//prize  add  by zhuzhengjiang  for imx476 otp 2019127-end
 	imgsensor_hw_power_sequence(
 			phw,
 			sensor_idx,

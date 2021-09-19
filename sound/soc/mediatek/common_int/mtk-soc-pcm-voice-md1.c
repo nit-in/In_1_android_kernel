@@ -400,12 +400,8 @@ static int mtk_voice1_prepare(struct snd_pcm_substream *substream)
 			  Soc_Aud_AFE_IO_Block_I2S1_DAC_2);
 
 	/* start I2S DAC out */
-//prize add by huarui, add igo ig1202 codec, 20200103 begin
-#if !defined(CONFIG_PRIZE_I2S1_ADC)
 	SetI2SDacOut(substream->runtime->rate, false,
 		     Soc_Aud_I2S_WLEN_WLEN_16BITS);
-#endif
-//prize add by huarui, add igo ig1202 codec, 20200103 end
 	SetMemoryPathEnable(Soc_Aud_Digital_Block_I2S_OUT_DAC, true);
 	SetI2SDacEnable(true);
 
@@ -461,8 +457,12 @@ static struct snd_soc_platform_driver mtk_soc_voice_platform = {
 
 static int mtk_voice_probe(struct platform_device *pdev)
 {
-	if (pdev->dev.of_node)
+	if (pdev->dev.of_node) {
 		dev_set_name(&pdev->dev, "%s", MT_SOC_VOICE_MD1);
+		pdev->name = pdev->dev.kobj.name;
+	} else {
+		pr_debug("%s(), pdev->dev.of_node = NULL!!!\n", __func__);
+	}
 
 	pr_info("%s(), dev name %s\n", __func__, dev_name(&pdev->dev));
 	return snd_soc_register_platform(&pdev->dev,

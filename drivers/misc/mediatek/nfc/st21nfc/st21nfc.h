@@ -21,6 +21,8 @@
 /*
  * ST21NFC power control via ioctl
  * ST21NFC_GET_WAKEUP :  poll gpio-level for Wakeup pin
+ * PN544_SET_PWR(1): power on
+ * PN544_SET_PWR(>1): power on with firmware download enabled
  */
 #define ST21NFC_GET_WAKEUP _IO(ST21NFC_MAGIC, 0x01)
 #define ST21NFC_PULSE_RESET _IO(ST21NFC_MAGIC, 0x02)
@@ -34,7 +36,7 @@
 #define ST21NFC_LEGACY_GET_WAKEUP _IOR(ST21NFC_MAGIC, 0x01, unsigned int)
 #define ST21NFC_LEGACY_PULSE_RESET _IOR(ST21NFC_MAGIC, 0x02, unsigned int)
 #define ST21NFC_LEGACY_SET_POLARITY_RISING \
-  _IOR(ST21NFC_MAGIC, 0x03, unsigned int)
+	_IOR(ST21NFC_MAGIC, 0x03, unsigned int)
 #define ST21NFC_LEGACY_SET_POLARITY_HIGH _IOR(ST21NFC_MAGIC, 0x05, unsigned int)
 #define ST21NFC_LEGACY_GET_POLARITY _IOR(ST21NFC_MAGIC, 0x07, unsigned int)
 #define ST21NFC_LEGACY_RECOVERY _IOR(ST21NFC_MAGIC, 0x08, unsigned int)
@@ -45,3 +47,8 @@
 #define ST54SPI_CB_ESE_USED 3
 void st21nfc_register_st54spi_cb(void (*cb)(int, void *), void *data);
 void st21nfc_unregister_st54spi_cb(void);
+#ifdef WITH_SPI_CLK_MNGT
+extern void mt_spi_enable_master_clk(struct spi_device *spidev);
+extern void mt_spi_disable_master_clk(struct spi_device *spidev);
+#endif  // WITH_SPI_CLK_MNGT
+

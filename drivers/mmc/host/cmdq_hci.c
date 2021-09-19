@@ -30,6 +30,7 @@
 #include "mtk_sd.h"
 #include "dbg.h"
 #include "card.h"
+#include "cqhci-crypto.h"
 
 #define DCMD_SLOT 31
 #define NUM_SLOTS 32
@@ -44,11 +45,6 @@ static inline struct mmc_request *get_req_by_tag(struct cmdq_host *cq_host,
 					  unsigned int tag)
 {
 	return cq_host->mrq_slot[tag];
-}
-
-static inline u8 *get_desc(struct cmdq_host *cq_host, u8 tag)
-{
-	return cq_host->desc_base + (tag * cq_host->slot_sz);
 }
 
 static inline u8 *get_link_desc(struct cmdq_host *cq_host, u8 tag)
@@ -300,6 +296,9 @@ static int cmdq_enable(struct mmc_host *mmc)
 
 	cqcfg = ((cq_host->caps & CMDQ_TASK_DESC_SZ_128 ? CQ_TASK_DESC_SZ : 0) |
 			(dcmd_enable ? CQ_DCMD : 0));
+
+	if (cqhci_crypto_enable(cq_host))
+		cqcfg |= CQHCI_CRYPTO_ENABLE;
 
 	cmdq_writel(cq_host, cqcfg, CQCFG);
 	/* enable CQ_HOST */
@@ -655,7 +654,11 @@ static int cmdq_request(struct mmc_host *mmc, struct mmc_request *mrq)
 			    (mrq->cmdq_req->cmdq_req_flags & QBR));
 	*task_desc = cpu_to_le64(data);
 
-	cmdq_prep_crypto_desc(cq_host, task_desc, hci_ce_ctx);
+	/* inline crypto */
+	if (mmc->caps2 & MMC_CAP2_CRYPTO)
+		cqhci_prep_crypto_desc(mrq, task_desc);
+	else
+		cmdq_prep_crypto_desc(cq_host, task_desc, hci_ce_ctx);
 
 	err = cmdq_prep_tran_desc(mrq, cq_host, tag);
 	if (err) {
@@ -1069,6 +1072,7 @@ int cmdq_init(struct cmdq_host *cq_host, struct mmc_host *mmc,
 	      bool dma64)
 {
 	int err = 0;
+	struct msdc_host *msdc_host = mmc_priv(mmc);
 
 	cq_host->dma64 = dma64;
 	cq_host->mmc = mmc;
@@ -1085,6 +1089,14 @@ int cmdq_init(struct cmdq_host *cq_host, struct mmc_host *mmc,
 				sizeof(cq_host->mrq_slot), GFP_KERNEL);
 	if (!cq_host->mrq_slot)
 		return -ENOMEM;
+
+	msdc_clk_prepare_enable(msdc_host);
+	err = cqhci_host_init_crypto(cq_host);
+	if (err) {
+		dev_info(mmc->parent, "CQHCI crypto initialization failed\n");
+		WARN_ON(1);
+	}
+	msdc_clk_disable_unprepare(msdc_host);
 
 	init_completion(&cq_host->halt_comp);
 	return err;

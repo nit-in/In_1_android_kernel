@@ -12,18 +12,7 @@
  */
 
 #include "gpio.h"
-//prize add by zhuzhengjiang for mipi switch 20200904 start
-#ifdef MIPI_SWITCH
 
-struct pinctrl		 *ppinctrl_cam;
-
-// mipi switch
-struct pinctrl_state *ppinctrl_cam_mipi_sel_h;
-struct pinctrl_state *ppinctrl_cam_mipi_sel_l;
-struct pinctrl_state *ppinctrl_cam_mipi_en_h;
-struct pinctrl_state *ppinctrl_cam_mipi_en_l;
-#endif
-//prize add by zhuzhengjiang for mipi switch 20200904 end
 struct GPIO_PINCTRL gpio_pinctrl_list_cam[GPIO_CTRL_STATE_MAX_NUM_CAM] = {
 	/* Main */
 	{"pnd1"},
@@ -54,7 +43,7 @@ static struct GPIO gpio_instance;
  */
 static enum IMGSENSOR_RETURN gpio_release(void *pinstance)
 {
-	int    i, j;
+	unsigned int    i, j;
 	struct platform_device *pplatform_dev = gpimgsensor_hw_platform_device;
 	struct GPIO            *pgpio         = (struct GPIO *)pinstance;
 	enum   IMGSENSOR_RETURN ret           = IMGSENSOR_RETURN_SUCCESS;
@@ -91,28 +80,19 @@ static enum IMGSENSOR_RETURN gpio_release(void *pinstance)
 }
 static enum IMGSENSOR_RETURN gpio_init(void *pinstance)
 {
-	int    i, j;
+	unsigned int    i, j;
 	struct platform_device *pplatform_dev = gpimgsensor_hw_platform_device;
 	struct GPIO            *pgpio         = (struct GPIO *)pinstance;
 	enum   IMGSENSOR_RETURN ret           = IMGSENSOR_RETURN_SUCCESS;
 	char str_pinctrl_name[LENGTH_FOR_SNPRINTF];
 	char *lookup_names = NULL;
-
+	int ret_snprintf = 0;
 
 	pgpio->ppinctrl = devm_pinctrl_get(&pplatform_dev->dev);
 	if (IS_ERR(pgpio->ppinctrl)) {
 		pr_err("%s : Cannot find camera pinctrl!", __func__);
 		return IMGSENSOR_RETURN_ERROR;
 	}
-//prize add by zhuzhengjiang for mipi switch 20200904 start
-#ifdef MIPI_SWITCH
-	ppinctrl_cam = pgpio->ppinctrl;
-	ppinctrl_cam_mipi_sel_h = pinctrl_lookup_state(pgpio->ppinctrl,"cam_mipi_switch_sel_1");
-	ppinctrl_cam_mipi_sel_l = pinctrl_lookup_state(pgpio->ppinctrl,"cam_mipi_switch_sel_0");
-	ppinctrl_cam_mipi_en_h  = pinctrl_lookup_state(pgpio->ppinctrl,"cam_mipi_switch_en_1");
-	ppinctrl_cam_mipi_en_l  = pinctrl_lookup_state(pgpio->ppinctrl,"cam_mipi_switch_en_0");
-#endif
-//prize add by zhuzhengjiang for mipi switch 20200904 end
 	for (j = IMGSENSOR_SENSOR_IDX_MIN_NUM;
 	j < IMGSENSOR_SENSOR_IDX_MAX_NUM;
 	j++) {
@@ -120,11 +100,18 @@ static enum IMGSENSOR_RETURN gpio_init(void *pinstance)
 			lookup_names =
 				gpio_pinctrl_list_cam[i].ppinctrl_lookup_names;
 			if (lookup_names) {
-				snprintf(str_pinctrl_name,
+				ret_snprintf = snprintf(str_pinctrl_name,
 					sizeof(str_pinctrl_name),
 					"cam%d_%s",
 					j,
 					lookup_names);
+				if (ret_snprintf < 0) {
+					pr_info(
+					    "%s : snprintf alloc err\n",
+					    __func__);
+					ret = IMGSENSOR_RETURN_ERROR;
+					return ret;
+				}
 				pgpio->ppinctrl_state_cam[j][i] =
 					pinctrl_lookup_state(
 					    pgpio->ppinctrl,
@@ -201,7 +188,7 @@ static enum IMGSENSOR_RETURN gpio_set(
 #endif
 	{
 		ppinctrl_state =
-		    pgpio->ppinctrl_state_cam[sensor_idx][
+		    pgpio->ppinctrl_state_cam[(unsigned int)sensor_idx][
 			((pin - IMGSENSOR_HW_PIN_PDN) << 1) + gpio_state];
 	}
 	/*pr_debug("%s : pinctrl , state indx %d\n",

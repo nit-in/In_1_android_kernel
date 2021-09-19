@@ -1,5 +1,6 @@
 /*
  * Copyright (C) 2017 MediaTek Inc.
+ * Copyright (C) 2021 XiaoMi, Inc.
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License version 2 as
@@ -23,6 +24,12 @@ enum {
 	USB_DPIDLE_AUDIO,
 };
 
+enum USB_DEV_SPEED {
+	DEV_SPEED_INACTIVE = 0,
+	DEV_SPEED_FULL = 1,
+	DEV_SPEED_HIGH = 3,
+	DEV_SPEED_SUPER = 4,
+};
 
 extern int xhci_mtk_register_plat(void);
 extern void xhci_mtk_unregister_plat(void);
@@ -44,10 +51,11 @@ extern void phy_hal_exit(struct phy *phy);
 extern bool ssusb_u3loop_back_test(struct ssusb_mtk *ssusb);
 
 
-extern void usb_wakeup_enable(struct ssusb_mtk *ssusb);
-extern void usb_wakeup_disable(struct ssusb_mtk *ssusb);
+extern void ssusb_wakeup_mode_enable(struct ssusb_mtk *ssusb);
+extern void ssusb_wakeup_mode_disable(struct ssusb_mtk *ssusb);
 
 extern void ssusb_dpidle_request(int mode);
+extern void ssusb_set_phy_mode(int speed);
 
 extern void ssusb_debugfs_init(struct ssusb_mtk *ssusb);
 extern void ssusb_debugfs_exit(struct ssusb_mtk *ssusb);

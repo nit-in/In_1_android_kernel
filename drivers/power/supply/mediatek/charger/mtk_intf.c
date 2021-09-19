@@ -10,8 +10,6 @@
  * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
  * See http://www.gnu.org/licenses/gpl-2.0.html for more details.
  */
-#ifdef CONFIG_MTK_PUMP_EXPRESS_PLUS_50_SUPPORT
-/*prize-huangjiwu-20200730, add for rt9759 pe50 start*/
 
 #include "mtk_intf.h"
 
@@ -164,15 +162,16 @@ int adapter_get_pps_cap(struct pps_cap *cap)
 int adapter_get_status(struct ta_status *sta)
 {
 	struct adapter_status tasta = {0};
+	int ret = 0;
 
-	adapter_dev_get_status(pinfo->pd_adapter, &tasta);
+	ret = adapter_dev_get_status(pinfo->pd_adapter, &tasta);
 
 	sta->temperature = tasta.temperature;
 	sta->ocp = tasta.ocp;
 	sta->otp = tasta.otp;
 	sta->ovp = tasta.ovp;
 
-	return 0;
+	return ret;
 }
 
 int adapter_is_support_pd_pps(void)
@@ -241,5 +240,3 @@ int wake_up_charger(void)
 
 	return 0;
 }
-/*prize-huangjiwu-20200730, add for rt9759 pe50 end*/
-#endif

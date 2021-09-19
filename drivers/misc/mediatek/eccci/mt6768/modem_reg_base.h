@@ -1,5 +1,6 @@
 /*
  * Copyright (C) 2015 MediaTek Inc.
+ * Copyright (C) 2021 XiaoMi, Inc.
  *
  * This program is free software: you can redistribute it and/or modify
  * it under the terms of the GNU General Public License version 2 as
@@ -32,6 +33,7 @@
 #define CCIF_SRAM_SIZE 512
 
 #define BASE_ADDR_MDRSTCTL   0x200f0000  /* From md, no use by AP directly */
+#define L1_BASE_ADDR_L1RGU   0x26010000  /* From md, no use by AP directly  */
 #define MD_RGU_BASE          (BASE_ADDR_MDRSTCTL + 0x100)  /* AP use */
 
 /* MD1 PLL */

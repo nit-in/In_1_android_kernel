@@ -149,7 +149,6 @@ struct layering_rule_info_t {
 	int hrt_sys_state;
 	int wrot_sram;
 	unsigned int hrt_idx;
-	/*int active_config_id;*/
 };
 
 struct layering_rule_ops {

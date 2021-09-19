@@ -1,5 +1,6 @@
 /*
  * Copyright (C) 2017 MediaTek Inc.
+ * Copyright (C) 2021 XiaoMi, Inc.
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License version 2 as
@@ -11,6 +12,10 @@
  * See http://www.gnu.org/licenses/gpl-2.0.html for more details.
  */
 #include "imgsensor_cfg_table.h"
+#if defined(MERLIN_MSM_CAMERA_HW_INFO) || defined(LANCELOT_MSM_CAMERA_HW_INFO)\
+|| defined(GALAHAD_MSM_CAMERA_HW_INFO) || defined(SHIVA_MSM_CAMERA_HW_INFO)
+#include "hq_imgsensor_hw_register_info.h"
+#endif
 #include <linux/platform_device.h>
 #include <linux/delay.h>
 #include <linux/cdev.h>
@@ -21,6 +26,7 @@
 #include <linux/workqueue.h>
 #include <linux/init.h>
 #include <linux/types.h>
+#include <linux/hqsysfs.h>
 
 #undef CONFIG_MTK_SMI_EXT
 #ifdef CONFIG_MTK_SMI_EXT
@@ -60,12 +66,6 @@
 #ifdef CONFIG_MTK_SMI_EXT
 static int current_mmsys_clk = MMSYS_CLK_MEDIUM;
 #endif
-//prize-zhuzhengjiang-20200904-start
-#if defined(CONFIG_PRIZE_HARDWARE_INFO)
-#include "../../../hardware_info/hardware_info.h"
-extern struct hardware_info current_camera_info[5];
-#endif
-//prize-zhuzhengjiang-20200904-end
 
 /* Test Only!! Open this define for temperature meter UT */
 /* Temperature workqueue */
@@ -471,33 +471,6 @@ static inline int imgsensor_check_is_alive(struct IMGSENSOR_SENSOR *psensor)
 	} else {
 		pr_info(" Sensor found ID = 0x%x\n", sensorID);
 		err = ERROR_NONE;
-		//prize-zhuzhengjiang-20200904-start
-		#if defined(CONFIG_PRIZE_HARDWARE_INFO)
-		if(psensor->inst.sensor_idx >= 0 && psensor->inst.sensor_idx < 5)
-		{
-			if (sensorID == 0x30a) {
-				strcpy(current_camera_info[2].chip,psensor_inst->psensor_name);
-				sprintf(current_camera_info[2].id,"0x%04x",sensorID);
-				strcpy(current_camera_info[2].vendor,"unknow");
-
-			}else {
-				strcpy(current_camera_info[psensor->inst.sensor_idx].chip,psensor_inst->psensor_name);
-    			sprintf(current_camera_info[psensor->inst.sensor_idx].id,"0x%04x",sensorID);
-    			strcpy(current_camera_info[psensor->inst.sensor_idx].vendor,"unknow");
-			}
-			if (1){
-				MSDK_SENSOR_RESOLUTION_INFO_STRUCT sensorResolution;
-				imgsensor_sensor_get_resolution(psensor,&sensorResolution);
-				if (sensorID == 0x30a){
-					sprintf(current_camera_info[2].more,"%d*%d",sensorResolution.SensorFullWidth,sensorResolution.SensorFullHeight);
-
-				}else{
-					sprintf(current_camera_info[psensor->inst.sensor_idx].more,"%d*%d",sensorResolution.SensorFullWidth,sensorResolution.SensorFullHeight);
-				}
-			}
-		}
-		#endif
-		//prize-zhuzhengjiang-20200904-end
 	}
 
 	if (err != ERROR_NONE)
@@ -531,13 +504,14 @@ int imgsensor_set_driver(struct IMGSENSOR_SENSOR *psensor)
 
 	static int orderedSearchList[MAX_NUM_OF_SUPPORT_SENSOR] = {-1};
 	static bool get_search_list = true;
-	int i = 0;
-	int j = 0;
+	unsigned int i = 0;
+	unsigned int j = 0;
 	char *driver_name = NULL;
 
 	imgsensor_mutex_init(psensor_inst);
 	imgsensor_i2c_init(&psensor_inst->i2c_cfg,
-	   imgsensor_custom_config[psensor->inst.sensor_idx].i2c_dev);
+	imgsensor_custom_config[
+	(unsigned int)psensor->inst.sensor_idx].i2c_dev);
 
 	imgsensor_i2c_filter_msg(&psensor_inst->i2c_cfg, true);
 
@@ -628,7 +602,10 @@ int imgsensor_set_driver(struct IMGSENSOR_SENSOR *psensor)
 					    psensor->inst.sensor_idx,
 					    drv_idx,
 					    psensor_inst->psensor_name);
-
+#if defined(MERLIN_MSM_CAMERA_HW_INFO) || defined(LANCELOT_MSM_CAMERA_HW_INFO) \
+|| defined(GALAHAD_MSM_CAMERA_HW_INFO) || defined(SHIVA_MSM_CAMERA_HW_INFO)
+					hq_imgsensor_sensor_hw_register(psensor, psensor_inst);
+#endif
 					ret = drv_idx;
 					break;
 				}
@@ -1290,14 +1267,15 @@ static inline int adopt_CAMERA_HW_FeatureControl(void *pBuf)
 			pr_err(" ioctl copy from user failed\n");
 			return -EFAULT;
 		}
-		if (FeatureParaLen > FEATURE_CONTROL_MAX_DATA_SIZE)
+		if (!FeatureParaLen ||
+			FeatureParaLen > FEATURE_CONTROL_MAX_DATA_SIZE)
 			return -EINVAL;
 
-		pFeaturePara = kmalloc(FeatureParaLen, GFP_KERNEL);
+		pFeaturePara = kmalloc(FeatureParaLen + 32, GFP_KERNEL);
 		if (pFeaturePara == NULL)
 			return -ENOMEM;
 
-		memset(pFeaturePara, 0x0, FeatureParaLen);
+		memset(pFeaturePara, 0x0, FeatureParaLen + 32);
 	}
 
 	/* copy from user */
@@ -1458,7 +1436,6 @@ static inline int adopt_CAMERA_HW_FeatureControl(void *pBuf)
 	case SENSOR_FEATURE_SET_DRIVER:
 	case SENSOR_FEATURE_CHECK_IS_ALIVE:
 		break;
-	case SENSOR_FEATURE_GET_OFFSET_TO_START_OF_EXPOSURE:// prize add for its:test_sensor_fusion 20201029 start
 	case SENSOR_FEATURE_GET_DEFAULT_FRAME_RATE_BY_SCENARIO:
 	case SENSOR_FEATURE_GET_SENSOR_PDAF_CAPACITY:
 	case SENSOR_FEATURE_GET_SENSOR_HDR_CAPACITY:
@@ -2031,8 +2008,6 @@ static inline int adopt_CAMERA_HW_FeatureControl(void *pBuf)
 		break;
 	}
 	case SENSOR_FEATURE_SET_I2C_BUF_MODE_EN:
-		imgsensor_i2c_buffer_mode(
-		    (*(unsigned long long *)pFeaturePara));
 
 		break;
 	case SENSOR_FEATURE_SET_ESHUTTER:
@@ -2465,7 +2440,8 @@ static long imgsensor_ioctl(
 				i4RetValue =  -EFAULT;
 				goto CAMERA_HW_Ioctl_EXIT;
 			}
-		}
+		} else
+			memset(pBuff, 0, _IOC_SIZE(a_u4Command));
 	} else {
 		i4RetValue =  -EFAULT;
 		goto CAMERA_HW_Ioctl_EXIT;

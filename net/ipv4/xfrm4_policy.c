@@ -103,7 +103,6 @@ static int xfrm4_fill_dst(struct xfrm_dst *xdst, struct net_device *dev,
 	xdst->u.rt.rt_mtu_locked = rt->rt_mtu_locked;
 	xdst->u.rt.rt_table_id = rt->rt_table_id;
 	INIT_LIST_HEAD(&xdst->u.rt.rt_uncached);
-	rt_add_uncached_list(&xdst->u.rt);
 
 	return 0;
 }
@@ -223,12 +222,13 @@ _decode_session4(struct sk_buff *skb, struct flowi *fl, int reverse)
 }
 
 static void xfrm4_update_pmtu(struct dst_entry *dst, struct sock *sk,
-			      struct sk_buff *skb, u32 mtu)
+			      struct sk_buff *skb, u32 mtu,
+			      bool confirm_neigh)
 {
 	struct xfrm_dst *xdst = (struct xfrm_dst *)dst;
 	struct dst_entry *path = xdst->route;
 
-	path->ops->update_pmtu(path, sk, skb, mtu);
+	path->ops->update_pmtu(path, sk, skb, mtu, confirm_neigh);
 }
 
 static void xfrm4_redirect(struct dst_entry *dst, struct sock *sk,
@@ -245,8 +245,6 @@ static void xfrm4_dst_destroy(struct dst_entry *dst)
 	struct xfrm_dst *xdst = (struct xfrm_dst *)dst;
 
 	dst_destroy_metrics_generic(dst);
-	if (xdst->u.rt.rt_uncached_list)
-		rt_del_uncached_list(&xdst->u.rt);
 	xfrm_dst_destroy(xdst);
 }
 

@@ -10,8 +10,6 @@
  * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
  * See http://www.gnu.org/licenses/gpl-2.0.html for more details.
  */
-#ifdef CONFIG_MTK_PUMP_EXPRESS_PLUS_50_SUPPORT
-/*prize-huangjiwu-20200730, add for rt9759 pe50 start*/
 
 #ifndef __MTK_PE_40_H
 #define __MTK_PE_40_H
@@ -104,5 +102,3 @@ extern int pe40_set_data(struct pe40_data data);
 extern struct pe40_data *pe40_get_data(void);
 
 #endif /* __MTK_PE_40_H */
-/*prize-huangjiwu-20200730, add for rt9759 pe50 end*/
-#endif

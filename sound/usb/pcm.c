@@ -23,6 +23,7 @@
 #include <linux/usb/audio-v2.h>
 #include <linux/io.h>
 #include <linux/module.h>
+#include <linux/pm_qos.h>
 
 #include <sound/core.h>
 #include <sound/pcm.h>
@@ -40,6 +41,8 @@
 
 #define SUBSTREAM_FLAG_DATA_EP_STARTED	0
 #define SUBSTREAM_FLAG_SYNC_EP_STARTED	1
+
+#define MAX_SETALT_TIMEOUT_MS 1000
 
 #define MTK_SND_USB_DBG(fmt, args...) \
 	pr_notice("<%s(), %d> " fmt, __func__, __LINE__, ## args)
@@ -364,6 +367,7 @@ static int set_sync_ep_implicit_fb_quirk(struct snd_usb_substream *subs,
 	struct usb_host_interface *alts;
 	struct usb_interface *iface;
 	unsigned int ep;
+	unsigned int ifnum;
 
 	/* Implicit feedback sync EPs consumers are always playback EPs */
 	if (subs->direction != SNDRV_PCM_STREAM_PLAYBACK)
@@ -372,45 +376,25 @@ static int set_sync_ep_implicit_fb_quirk(struct snd_usb_substream *subs,
 	switch (subs->stream->chip->usb_id) {
 	case USB_ID(0x0763, 0x2030): /* M-Audio Fast Track C400 */
 	case USB_ID(0x0763, 0x2031): /* M-Audio Fast Track C600 */
+	case USB_ID(0x22f0, 0x0006): /* Allen&Heath Qu-16 */
 		ep = 0x81;
-		iface = usb_ifnum_to_if(dev, 3);
-
-		if (!iface || iface->num_altsetting == 0)
-			return -EINVAL;
-
-		alts = &iface->altsetting[1];
-		goto add_sync_ep;
-		break;
+		ifnum = 3;
+		goto add_sync_ep_from_ifnum;
 	case USB_ID(0x0763, 0x2080): /* M-Audio FastTrack Ultra */
 	case USB_ID(0x0763, 0x2081):
 		ep = 0x81;
-		iface = usb_ifnum_to_if(dev, 2);
-
-		if (!iface || iface->num_altsetting == 0)
-			return -EINVAL;
-
-		alts = &iface->altsetting[1];
-		goto add_sync_ep;
-	case USB_ID(0x2466, 0x8003):
+		ifnum = 2;
+		goto add_sync_ep_from_ifnum;
+	case USB_ID(0x2466, 0x8003): /* Fractal Audio Axe-Fx II */
 		ep = 0x86;
-		iface = usb_ifnum_to_if(dev, 2);
-
-		if (!iface || iface->num_altsetting == 0)
-			return -EINVAL;
-
-		alts = &iface->altsetting[1];
-		goto add_sync_ep;
-	case USB_ID(0x1397, 0x0002):
+		ifnum = 2;
+		goto add_sync_ep_from_ifnum;
+	case USB_ID(0x1397, 0x0002): /* Behringer UFX1204 */
 		ep = 0x81;
-		iface = usb_ifnum_to_if(dev, 1);
-
-		if (!iface || iface->num_altsetting == 0)
-			return -EINVAL;
-
-		alts = &iface->altsetting[1];
-		goto add_sync_ep;
-
+		ifnum = 1;
+		goto add_sync_ep_from_ifnum;
 	}
+
 	if (attr == USB_ENDPOINT_SYNC_ASYNC &&
 	    altsd->bInterfaceClass == USB_CLASS_VENDOR_SPEC &&
 	    altsd->bInterfaceProtocol == 2 &&
@@ -424,6 +408,14 @@ static int set_sync_ep_implicit_fb_quirk(struct snd_usb_substream *subs,
 
 	/* No quirk */
 	return 0;
+
+add_sync_ep_from_ifnum:
+	iface = usb_ifnum_to_if(dev, ifnum);
+
+	if (!iface || iface->num_altsetting < 2)
+		return -EINVAL;
+
+	alts = &iface->altsetting[1];
 
 add_sync_ep:
 	subs->sync_endpoint = snd_usb_add_endpoint(subs->stream->chip,
@@ -510,6 +502,7 @@ static int set_sync_endpoint(struct snd_usb_substream *subs,
 	}
 	ep = get_endpoint(alts, 1)->bEndpointAddress;
 	if (get_endpoint(alts, 0)->bLength >= USB_DT_ENDPOINT_AUDIO_SIZE &&
+	    get_endpoint(alts, 0)->bSynchAddress != 0 &&
 	    ((is_playback && ep != (unsigned int)(get_endpoint(alts, 0)->bSynchAddress | USB_DIR_IN)) ||
 	     (!is_playback && ep != (unsigned int)(get_endpoint(alts, 0)->bSynchAddress & ~USB_DIR_IN)))) {
 		dev_err(&dev->dev,
@@ -540,6 +533,7 @@ static int set_sync_endpoint(struct snd_usb_substream *subs,
 	return 0;
 }
 
+extern void kick_usb_vbus_sm(void);
 /*
  * find a matching format and set up the interface
  */
@@ -550,6 +544,8 @@ static int set_format(struct snd_usb_substream *subs, struct audioformat *fmt)
 	struct usb_interface_descriptor *altsd;
 	struct usb_interface *iface;
 	int err;
+	int usb_vid;
+	int usb_pid;
 
 	iface = usb_ifnum_to_if(dev, fmt->iface);
 	if (WARN_ON(!iface))
@@ -564,7 +560,8 @@ static int set_format(struct snd_usb_substream *subs, struct audioformat *fmt)
 
 	/* close the old interface */
 	if (subs->interface >= 0 && subs->interface != fmt->iface) {
-		err = usb_set_interface(subs->dev, subs->interface, 0);
+		err = usb_set_interface_timeout(subs->dev,
+				subs->interface, 0, MAX_SETALT_TIMEOUT_MS);
 		if (err < 0) {
 			dev_err(&dev->dev,
 				"%d:%d: return to setting 0 failed (%d)\n",
@@ -583,11 +580,20 @@ static int set_format(struct snd_usb_substream *subs, struct audioformat *fmt)
 		if (err < 0)
 			return -EIO;
 
-		err = usb_set_interface(dev, fmt->iface, fmt->altsetting);
+		err = usb_set_interface_timeout(dev, fmt->iface,
+				fmt->altsetting, MAX_SETALT_TIMEOUT_MS);
 		if (err < 0) {
+			usb_vid = USB_ID_VENDOR(subs->stream->chip->usb_id);
+			usb_pid = USB_ID_PRODUCT(subs->stream->chip->usb_id);
 			dev_err(&dev->dev,
 				"%d:%d: usb_set_interface failed (%d)\n",
 				fmt->iface, fmt->altsetting, err);
+			if (((0x2717 == usb_vid) || (0x12d1 == usb_vid) || (0x0bda == usb_vid)) &&
+				((0x3801 == usb_pid) || (0x3802 == usb_pid) || (0x3803 == usb_pid) ||
+				(0x3a07 == usb_pid) || (0x492f == usb_pid))) {
+			dev_err(&subs->dev->dev, "kick usb vbus\n");
+			kick_usb_vbus_sm();
+			}
 			return -EIO;
 		}
 		subs->interface = fmt->iface;
@@ -818,6 +824,19 @@ static int snd_usb_hw_params(struct snd_pcm_substream *substream,
 	subs->altset_idx = fmt->altset_idx;
 	subs->need_setup_ep = true;
 
+	/* add the qos request and set the latency */
+	if (pm_qos_request_active(&subs->pm_qos)) {
+		pm_qos_update_request(&subs->pm_qos,
+					US_PER_FRAME * PM_QOS_COUNT);
+		pr_info("%s: (pm_qos @%p) update\n",
+			   __func__, &subs->pm_qos);
+	} else {
+		pm_qos_add_request(&subs->pm_qos,
+			   PM_QOS_CPU_DMA_LATENCY, US_PER_FRAME * PM_QOS_COUNT);
+		pr_info("%s: (pm_qos @%p) request\n",
+			   __func__, &subs->pm_qos);
+	}
+
 	return 0;
 }
 
@@ -839,6 +858,16 @@ static int snd_usb_hw_free(struct snd_pcm_substream *substream)
 		snd_usb_endpoint_deactivate(subs->data_endpoint);
 		snd_usb_unlock_shutdown(subs->stream->chip);
 	}
+
+	/* remove the qos request */
+	if (pm_qos_request_active(&subs->pm_qos)) {
+		pm_qos_remove_request(&subs->pm_qos);
+		pr_info("%s: (pm_qos @%p) remove\n",
+			   __func__, &subs->pm_qos);
+	} else
+		pr_info("%s: (pm_qos @%p) remove again\n",
+			   __func__, &subs->pm_qos);
+
 	return snd_pcm_lib_free_vmalloc_buffer(substream);
 }
 
@@ -1366,6 +1395,12 @@ static void retire_capture_urb(struct snd_usb_substream *subs,
 			// continue;
 		}
 		bytes = urb->iso_frame_desc[i].actual_length;
+		if (subs->stream_offset_adj > 0) {
+			unsigned int adj = min(subs->stream_offset_adj, bytes);
+			cp += adj;
+			bytes -= adj;
+			subs->stream_offset_adj -= adj;
+		}
 		frames = bytes / stride;
 		if (!subs->txfr_quirk)
 			bytes = frames * stride;

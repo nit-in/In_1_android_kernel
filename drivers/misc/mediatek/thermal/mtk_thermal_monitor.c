@@ -1,5 +1,6 @@
 /*
  * Copyright (C) 2017 MediaTek Inc.
+ * Copyright (C) 2021 XiaoMi, Inc.
  *
  * This program is free software: you can redistribute it and/or modify
  * it under the terms of the GNU General Public License version 2 as
@@ -233,8 +234,12 @@ static int mtk_thermal_get_tz_idx(char *type)
 		return MTK_THERMAL_SENSOR_XTAL;
 	else if (strncmp(type, "mtktsbtsmdpa", 12) == 0)
 		return MTK_THERMAL_SENSOR_MD_PA;
+	else if (strncmp(type, "mtktsbtsnrpa", 12) == 0)
+		return MTK_THERMAL_SENSOR_NR_PA;
 	else if (strncmp(type, "mtktsdctm", 9) == 0)
 		return MTK_THERMAL_SENSOR_DCTM;
+	else if (strncmp(type, "mtktscharger", 12) == 0)
+		return MTK_THERMAL_SENSOR_CHARGER;
 
 	return -1;
 }
@@ -530,6 +535,19 @@ static void _mtkthermal_clear_cooler_conditions
 	_mtm_decide_new_delay();
 }
 
+static int _mtkthermal_is_cooler_conditions_valid(char *condition)
+{
+	if (condition[0] == 0x0
+		|| mtk_thermal_get_tz_idx(condition) >= 0
+		|| strncmp(condition, "EXIT", strlen("EXIT")) == 0
+		|| strncmp(condition, "CPU0", strlen("CPU0")) == 0
+		|| strncmp(condition, "Wifi", strlen("Wifi")) == 0
+		|| strncmp(condition, "Mobile", strlen("Mobile")) == 0)
+		return 1;
+
+	return 0;
+}
+
 static int _mtkthermal_cooler_read(struct seq_file *m, void *v)
 {
 	struct mtk_thermal_cooler_data *mcdata;
@@ -577,6 +595,10 @@ static ssize_t _mtkthermal_cooler_write
 	int len = 0;
 	char desc[128];
 	struct mtk_thermal_cooler_data *mcdata;
+	char conditions
+		[MTK_THERMAL_MONITOR_COOLER_MAX_EXTRA_CONDITIONS]
+		[THERMAL_NAME_LENGTH] = {{0} };
+	int threshold[MTK_THERMAL_MONITOR_COOLER_MAX_EXTRA_CONDITIONS] = {0};
 
 	len = (count < (sizeof(desc) - 1)) ? count : (sizeof(desc) - 1);
 	if (copy_from_user(desc, buffer, len))
@@ -606,16 +628,31 @@ static ssize_t _mtkthermal_cooler_write
 	 * is changed to other than 3
 	 */
 #if (MTK_THERMAL_MONITOR_COOLER_MAX_EXTRA_CONDITIONS == 3)
-	_mtkthermal_clear_cooler_conditions(mcdata);
-
 	if (sscanf(desc, "%19s %d %19s %d %19s %d",
-		&mcdata->conditions[0][0], &mcdata->threshold[0],
-		&mcdata->conditions[1][0], &mcdata->threshold[1],
-		&mcdata->conditions[2][0], &mcdata->threshold[2]) >= 2){
+		&conditions[0][0], &threshold[0],
+		&conditions[1][0], &threshold[1],
+		&conditions[2][0], &threshold[2]) >= 2){
 		int i = 0;
+
+		_mtkthermal_clear_cooler_conditions(mcdata);
 
 		for (; i < MTK_THERMAL_MONITOR_COOLER_MAX_EXTRA_CONDITIONS;
 		i++) {
+			if (!_mtkthermal_is_cooler_conditions_valid(
+				conditions[i])) {
+				/* ignore invalid conditions */
+				THRML_ERROR_LOG(
+					"%s %s invalid condition: %s\n",
+					__func__, mcdata->tz->type,
+					conditions[i]);
+				continue;
+			}
+
+			strncpy(mcdata->conditions[i], conditions[i],
+				THERMAL_NAME_LENGTH);
+			mcdata->conditions[i][THERMAL_NAME_LENGTH - 1] = '\0';
+			mcdata->threshold[i] = threshold[i];
+
 			if (strncmp(mcdata->conditions[i], "EXIT", 4) == 0) {
 				mcdata->exit_threshold = mcdata->threshold[i];
 
@@ -625,24 +662,34 @@ static ssize_t _mtkthermal_cooler_write
 
 			}
 
-			THRML_LOG("%s %d: %s %d %p %d.\n", __func__, i,
-						&mcdata->conditions[i][0],
-						mcdata->conditions[i][0],
-						mcdata->condition_last_value[i],
-						mcdata->threshold[0]);
+			THRML_LOG("%s %s %d: %s %d %p %d.\n", __func__,
+				mcdata->tz->type, i,
+				&mcdata->conditions[i][0],
+				mcdata->conditions[i][0],
+				mcdata->condition_last_value[i],
+				mcdata->threshold[0]);
 		}
 
 		_mtm_decide_new_delay();
 
 		return count;
+	} else if (conditions[0][0] == 0x0) {
+		/* No condition */
+		_mtkthermal_clear_cooler_conditions(mcdata);
+		THRML_LOG("%s %s No condition!\n",
+			__func__, mcdata->tz->type);
+
+		return count;
 	}
+
 #else
 #error "Change correspondent part when changing MTK_THERMAL_MONITOR_ skip..."
 /* Change correspondent part when changing
  * MTK_THERMAL_MONITOR_COOLER_MAX_EXTRA_CONDITIONS!
  */
 #endif
-	/*THRML_ERROR_LOG("%s bad arg\n", __func__);*/
+	THRML_ERROR_LOG("%s %s bad arg: %s\n",
+		__func__, mcdata->tz->type, desc);
 
 	return -EINVAL;
 }
@@ -1825,11 +1872,40 @@ static int mtk_cooling_wrapper_set_cur_state
 	return ret;
 }
 
+/* .get_available */
+static int mtk_cooling_wrapper_get_available
+(struct thermal_cooling_device *cdev, char *available)
+{
+	int ret = 0;
+	struct thermal_cooling_device_ops *ops;
+	struct mtk_thermal_cooler_data *mcdata;
+
+	mutex_lock(&MTM_COOLER_LOCK);
+
+	/* Recovery client's devdata */
+	ops = recoveryClientCooler(cdev, &mcdata);
+
+	if (ops->get_available)
+		ret = ops->get_available(cdev, available);
+	else
+		snprintf(available, 1, "\n");
+
+	THRML_LOG("[.get_available] cdev_type:%s available:%s\n",
+						cdev->type, available);
+
+	cdev->devdata = mcdata;
+
+	mutex_unlock(&MTM_COOLER_LOCK);
+
+	return ret;
+}
+
 /* Cooling callbacks OPS */
 static struct thermal_cooling_device_ops mtk_cooling_wrapper_dev_ops = {
 	.get_max_state = mtk_cooling_wrapper_get_max_state,
 	.get_cur_state = mtk_cooling_wrapper_get_cur_state,
 	.set_cur_state = mtk_cooling_wrapper_set_cur_state,
+	.get_available = mtk_cooling_wrapper_get_available,
 };
 
 /*

@@ -1,5 +1,6 @@
 /*
  * Copyright (C) 2017 MediaTek Inc.
+ * Copyright (C) 2021 XiaoMi, Inc.
  *
  * This program is free software: you can redistribute it and/or modify
  * it under the terms of the GNU General Public License version 2 as
@@ -20,6 +21,7 @@
 #include <linux/platform_device.h>
 #include <mt-plat/aee.h>
 #include <linux/types.h>
+#include <linux/reboot.h>
 #include <linux/delay.h>
 #include <linux/proc_fs.h>
 #include <linux/syscalls.h>
@@ -49,7 +51,9 @@ static void tsbattery_exit(void);
 int __attribute__ ((weak))
 read_tbat_value(void)
 {
-	pr_notice("[Thermal] E_WF: %s doesn't exist\n", __func__);
+#if !defined(CONFIG_POWER_EXT)
+	pr_debug("[Thermal] E_WF: %s doesn't exist\n", __func__);
+#endif
 	return 30;
 }
 
@@ -467,7 +471,8 @@ struct thermal_cooling_device *cdev, unsigned long state)
 		/* To trigger data abort to reset the system
 		 * for thermal protection.
 		 */
-		BUG();
+		pr_debug("Need to power off insted of KE !!!");
+		kernel_power_off();
 	}
 	return 0;
 }

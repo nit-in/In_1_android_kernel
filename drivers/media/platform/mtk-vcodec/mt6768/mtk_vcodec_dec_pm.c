@@ -1,5 +1,6 @@
 /*
  * Copyright (c) 2016 MediaTek Inc.
+ * Copyright (C) 2021 XiaoMi, Inc.
  * Author: Tiffany Lin <tiffany.lin@mediatek.com>
  *
  * This program is free software; you can redistribute it and/or modify
@@ -50,7 +51,7 @@ struct pm_qos_request vdec_qos_req_bw;
 void mtk_dec_init_ctx_pm(struct mtk_vcodec_ctx *ctx)
 {
 	ctx->input_driven = 0;
-	ctx->user_lock_hw = 0;
+	ctx->user_lock_hw = 1;
 }
 
 int mtk_vcodec_init_dec_pm(struct mtk_vcodec_dev *mtkdev)
@@ -276,10 +277,6 @@ void mtk_vdec_emi_bw_begin(struct mtk_vcodec_ctx *ctx)
 	case V4L2_PIX_FMT_H263:
 	case V4L2_PIX_FMT_S263:
 	case V4L2_PIX_FMT_XVID:
-	case V4L2_PIX_FMT_DIVX3:
-	case V4L2_PIX_FMT_DIVX4:
-	case V4L2_PIX_FMT_DIVX5:
-	case V4L2_PIX_FMT_DIVX6:
 	case V4L2_PIX_FMT_MPEG1:
 	case V4L2_PIX_FMT_MPEG2:
 		emi_bw = emi_bw * mp24_frm_scale[f_type] / (2 * STD_VDEC_FREQ);
@@ -303,7 +300,7 @@ static void mtk_vdec_emi_bw_end(void)
 #endif
 }
 
-void mtk_vdec_pmqos_prelock(struct mtk_vcodec_ctx *ctx)
+void mtk_vdec_pmqos_prelock(struct mtk_vcodec_ctx *ctx, int hw_id)
 {
 #if DEC_DVFS
 	mutex_lock(&ctx->dev->dec_dvfs_mutex);
@@ -312,13 +309,13 @@ void mtk_vdec_pmqos_prelock(struct mtk_vcodec_ctx *ctx)
 #endif
 }
 
-void mtk_vdec_pmqos_begin_frame(struct mtk_vcodec_ctx *ctx)
+void mtk_vdec_pmqos_begin_frame(struct mtk_vcodec_ctx *ctx, int hw_id)
 {
 	mtk_vdec_dvfs_begin(ctx);
 	mtk_vdec_emi_bw_begin(ctx);
 }
 
-void mtk_vdec_pmqos_end_frame(struct mtk_vcodec_ctx *ctx)
+void mtk_vdec_pmqos_end_frame(struct mtk_vcodec_ctx *ctx, int hw_id)
 {
 	mtk_vdec_dvfs_end(ctx);
 	mtk_vdec_emi_bw_end();

@@ -1,5 +1,6 @@
 /*
  * Copyright (C) 2016 MediaTek Inc.
+ * Copyright (C) 2021 XiaoMi, Inc.
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License version 2 as
@@ -73,46 +74,90 @@
 
 #include "mtk_charger_intf.h"
 #include "mtk_charger_init.h"
+#include "mtk_switch_charging.h"
 
-//prize sunshuai for 6516hx customer  20200929 start 
-#if defined(CONFIG_PRIZE_CHARGE_CTRL_HX)
-#include "prize_charge_limit.h"
-#endif
-//prize sunshuai for 6516hx customer  20200929 end 
+#define THERMAL_MAX 25
 
-
-//prize added by sunshuai, 5725 Wireless charging type identification 20200805-start
-#if defined(CONFIG_PRIZE_MT5725_SUPPORT_15W)
-enum wireless_charge_protocol {
-	PROTOCOL_UNKNOWN = 0,
-	BPP,
-	EPP,
-	AFC,
-};
-enum wireless_charge_protocol check_wireless_charge_status (void);
-#endif
-//prize added by sunshuai, 5725 Wireless charging type identification 20200805-end
-
-//prize-add by sunshuai for Bright screen current limit  20181130 start 
-#if defined(CONFIG_PRIZE_CHARGE_CTRL_POLICY)
-#include <linux/fb.h>
-
-int g_charge_is_screen_on = 1;
-#endif
-//prize-add by sunshuai for Bright screen current limit  20181130 end 
-
-/* prize-add by sunshuai for vestel  customer  requires charging to be controlled according to the battery specification 201900724 start */
-#if defined(CONFIG_MTK_CW2015_SUPPORT)
-extern int g_cw2015_capacity;
-extern int g_cw2015_vol;
-extern int cw2015_exit_flag;
-#endif
-/* prize-add by sunshuai for vestel  customer  requires charging to be controlled according to the battery specification 201900724 start */
-
+bool thermal_is_500;
 static struct charger_manager *pinfo;
 static struct list_head consumer_head = LIST_HEAD_INIT(consumer_head);
 static DEFINE_MUTEX(consumer_mutex);
 
+#if defined(TARGET_PRODUCT_LANCELOT) || defined(TARGET_PRODUCT_SHIVA)
+
+typedef enum {
+	PCBA_UNKNOW = 0,
+	PCBA_J19_P0_1_CN = 0x10,
+	PCBA_J19_P0_1_INDIA,
+	PCBA_J19_P0_1_GLOBAL,
+	PCBA_J19_P1_CN,
+	PCBA_J19_P1_INDIA,
+	PCBA_J19_P1_GLOBAL,
+	PCBA_J19_P2_CN,
+	PCBA_J19_P2_INDIA,
+	PCBA_J19_P2_GLOBAL,
+	PCBA_J19_MP_CN,
+	PCBA_J19_MP_INDIA,
+	PCBA_J19_MP_GLOBAL,
+	PCBA_J19_END,
+	PCBA_J19A_P0_1_GLOBAL = 0x30,
+	PCBA_J19A_P1_GLOBAL,
+	PCBA_J19A_P2_GLOBAL,
+	PCBA_J19A_MP_GLOBAL,
+	PCBA_J19A_END,
+	PCBA_J19P_P2_INDIA = 0x50,
+	PCBA_J19P_MP_INDIA,
+	PCBA_J19P_END,
+	PCBA_END,
+} PCBA_CONFIG;
+
+#else
+typedef enum {
+	PCBA_UNKNOW = 0,
+	PCBA_J15S_P0_CN = 0x10,
+	PCBA_J15S_P1_CN,
+	PCBA_J15S_P1_1_CN,
+	PCBA_J15S_P2_CN,
+	PCBA_J15S_MP_CN,
+	PCBA_J15S_CN_END = 0x2F,
+	PCBA_J15S_P0_INDIA = 0x30,
+	PCBA_J15S_P1_INDIA,
+	PCBA_J15S_P1_1_INDIA,
+	PCBA_J15S_P2_INDIA,
+	PCBA_J15S_MP_INDIA,
+	PCBA_J15S_INDIA_END = 0x4F,
+	PCBA_J15S_P0_GLOBAL = 0x50,
+	PCBA_J15N_P1_1_GLOBAL_NFC,
+	PCBA_J15S_P2_GLOBAL,
+	PCBA_J15N_P2_GLOBAL_NFC,
+	PCBA_J15S_P2_1_GLOBAL,
+	PCBA_J15N_P2_1_GLOBAL_NFC,
+	PCBA_J15S_MP_GLOBAL,
+	PCBA_J15N_MP_GLOBAL_NFC,
+	PCBA_J15S_GLOBAL_END = 0x6F,
+	PCBA_END,
+} PCBA_CONFIG;
+#endif
+PCBA_CONFIG get_huaqin_pcba_config(void);
+PCBA_CONFIG pcba_to_thermal = PCBA_UNKNOW;
+
+static int thermal_mitigation_dcp[THERMAL_MAX] = {2000000, 2000000, 2000000, 2000000, 2000000, 2000000, 2000000, 2000000, 1500000, 1500000, 1500000, 1000000,
+												  1000000, 1000000, 2000000, 1000000, 2000000, 1000000, 1500000, 1000000, 1000000, 1000000, 1000000, 1000000, 1000000};
+
+static int thermal_mitigation_qc2[THERMAL_MAX] = {2000000, 1700000, 1700000, 1500000, 1500000, 1500000, 1400000, 1400000, 1400000, 1300000, 1300000, 1300000,
+												  1100000, 1100000, 1100000,  685000,  685000,  685000,  600000,  600000,  500000,  500000,  500000,  500000,  500000};
+
+static int thermal_mitigation_qc3[THERMAL_MAX] = {3000000, 3000000, 2500000, 2500000, 2500000, 2000000, 2000000, 1500000, 2000000, 1500000, 1000000, 1000000,
+												  1000000, 1000000, 1500000, 1000000, 1500000, 685000, 1500000,  685000,  685000,  685000,  685000, 685000,  685000};
+
+static int thermal_mitigation_dcp_cn[THERMAL_MAX] = {2000000, 2000000, 2000000, 2000000, 2000000, 2000000, 2000000, 2000000, 2000000, 2000000, 1500000, 1500000,
+												1200000, 1200000, 2000000, 1000000, 2000000, 1000000, 1000000, 1000000, 1000000, 1000000, 1000000, 1000000, 1000000};
+
+static int thermal_mitigation_qc2_cn[THERMAL_MAX] = {2000000, 1700000, 1700000, 1500000, 1500000, 1500000, 1400000, 1400000, 1400000, 1300000, 1300000, 1300000,
+												1100000, 1100000, 1100000,  685000,  685000,  685000,  600000,  600000,  500000,  500000,  500000,  500000,  500000};
+
+static int thermal_mitigation_qc3_cn[THERMAL_MAX] = {3000000, 3000000, 2500000, 2500000, 2500000, 2000000, 2000000, 1500000, 2000000, 2000000, 1500000, 1500000,
+												1200000, 1100000, 1500000, 1000000, 1500000, 685000, 1000000,  685000,  685000,  685000,  685000, 685000,  685000};
 
 bool is_power_path_supported(void)
 {
@@ -154,6 +199,7 @@ void BATTERY_SetUSBState(int usb_state_value)
 		}
 	}
 }
+EXPORT_SYMBOL_GPL(BATTERY_SetUSBState);
 
 unsigned int set_chr_input_current_limit(int current_limit)
 {
@@ -296,14 +342,14 @@ int charger_manager_enable_high_voltage_charging(
 			struct charger_consumer *consumer, bool en)
 {
 	struct charger_manager *info = consumer->cm;
-	struct list_head *pos;
+	struct list_head *pos = NULL;
 	struct list_head *phead = &consumer_head;
-	struct charger_consumer *ptr;
+	struct charger_consumer *ptr = NULL;
 
 	if (!info)
 		return -EINVAL;
 
-	pr_err("[%s] %s, %d\n", __func__, dev_name(consumer->dev), en);
+	pr_debug("[%s] %s, %d\n", __func__, dev_name(consumer->dev), en);
 
 	if (!en && consumer->hv_charging_disabled == false)
 		consumer->hv_charging_disabled = true;
@@ -329,12 +375,6 @@ int charger_manager_enable_high_voltage_charging(
 
 	pr_info("%s: user: %s, en = %d\n", __func__, dev_name(consumer->dev),
 		info->enable_hv_charging);
-#ifdef CONFIG_MTK_PUMP_EXPRESS_PLUS_50_SUPPORT
-/*prize-huangjiwu-20200730, add for rt9759 pe50 start*/
-	if (mtk_pe50_get_is_connect(info) && !info->enable_hv_charging)
-		mtk_pe50_stop_algo(info, true);
-/*prize-huangjiwu-20200730, add for rt9759 pe50 start*/
-#endif
 	_wake_up_charger(info);
 
 	return 0;
@@ -347,7 +387,7 @@ int charger_manager_enable_power_path(struct charger_consumer *consumer,
 	int ret = 0;
 	bool is_en = true;
 	struct charger_manager *info = consumer->cm;
-	struct charger_device *chg_dev;
+	struct charger_device *chg_dev = NULL;
 
 
 	if (!info)
@@ -387,7 +427,7 @@ static int _charger_manager_enable_charging(struct charger_consumer *consumer,
 		idx, en);
 
 	if (info != NULL) {
-		struct charger_data *pdata;
+		struct charger_data *pdata = NULL;
 
 		if (idx == MAIN_CHARGER)
 			pdata = &info->chg1_data;
@@ -428,25 +468,99 @@ int charger_manager_enable_charging(struct charger_consumer *consumer,
 	return ret;
 }
 
-//prize added by sunshuai, Only the wireless 9 volt charging time limit takes effect, 20190307-start
-#if defined(CONFIG_PRIZE_WIRELESS_RECEIVER_MAXIC_MT5715)
-extern int  get_mt5715_9V_charge_status(void);
-//prize added by sunshuai, Only the wireless 9 volt charging time limit takes effect, 20190307-end
-#endif
+#define DUAL_CHG_VOLT_PD 7000
+#define DUAL_CHG_CURRENT_MIN 1800000
+#define DUAL_CHG_CURRENT_MAX 2000000
+#define DUAL_CHG_CURRENT_MIN_PD 1600000
+#define DUAL_CHG_CURRENT_MIN_PE2 1500000
+int _charger_manager_set_input_current_limit(struct charger_manager *info,
+	int idx, int input_current)
+{
+	if (info != NULL) {
+		struct charger_data *pdata;
+		struct sw_jeita_data *sw_jeita = &info->sw_jeita;
+//		struct switch_charging_alg_data *swchgalg = info->algorithm_data;
+		int dual_chg_current_min = DUAL_CHG_CURRENT_MIN;
+		int dual_chg_current_max = DUAL_CHG_CURRENT_MAX;
 
-//prize added by sunshuai Modification did not reach the high temperature 55 standard stop charging problem for ne6153 201900413 start 
-#if defined(CONFIG_PRIZE_NE6153_SUPPORT)
-extern bool get_ne6153_ischarge_9V(void);
-#endif
-//prize added by sunshuai Modification did not reach the high temperature 55 standard stop charging problem for ne6153 201900413 end 
+		if (info->data.parallel_vbus) {
+			if (idx == TOTAL_CHARGER) {
+				info->chg1_data.thermal_input_current_limit =
+					input_current;
+				info->chg2_data.thermal_input_current_limit =
+					input_current;
 
+			if (mtk_pe20_get_is_enable(pinfo) && mtk_pe20_get_is_connect(pinfo))
+				dual_chg_current_min = DUAL_CHG_CURRENT_MIN_PE2;
+			else if (pinfo->usb_psy->desc->type == POWER_SUPPLY_TYPE_USB_DCP)
+				dual_chg_current_min = DUAL_CHG_CURRENT_MAX;
 
-//prize added by sunshuai, wireless charge MT5725	15W soft start, 20200428-start
-#if defined(CONFIG_PRIZE_MT5725_SUPPORT_15W)
-extern int get_MT5725_status(void);
-#endif
-//prize added by sunshuai, wireless charge MT5725	15W soft start, 20200428-end
+			if (dual_chg_current_min <= input_current &&
+				input_current < dual_chg_current_max) {
+				info->chg1_data.thermal_input_current_limit =
+					input_current * 2 - DUAL_CHG_CURRENT_MAX;
+				info->chg2_data.thermal_input_current_limit =
+					DUAL_CHG_CURRENT_MAX;
+			}
 
+			if (sw_jeita->sm == TEMP_T3_TO_T4 &&
+					!info->swjeita_enable_dual_charging) {
+					info->chg1_data.thermal_input_current_limit =
+						input_current * 2;
+					info->chg2_data.thermal_input_current_limit = 0;
+				}
+			} else
+				return -ENOTSUPP;
+		} else {
+			if (idx == MAIN_CHARGER)
+				pdata = &info->chg1_data;
+			else if (idx == SLAVE_CHARGER)
+				pdata = &info->chg2_data;
+			else
+				return -ENOTSUPP;
+			pdata->thermal_input_current_limit = input_current;
+		}
+
+		chr_err("%s: idx:%d en:%d\n", __func__, idx, input_current);
+		_mtk_charger_change_current_setting(info);
+		_wake_up_charger(info);
+		return 0;
+	}
+	return 0;
+}
+
+int charger_manager_set_input_current_limit(struct charger_consumer *consumer,
+	int idx, int input_current)
+{
+	struct charger_manager *info = consumer->cm;
+
+	_charger_manager_set_input_current_limit(info, idx, input_current);
+	return -EBUSY;
+}
+
+#if 0
+//fix me
+int charger_manager_get_input_current_limit(struct charger_consumer *consumer,
+	int idx, int *input_current)
+{
+	struct charger_manager *info = consumer->cm;
+
+	if (info != NULL) {
+		struct charger_data *pdata;
+
+		if (idx == MAIN_CHARGER)
+			pdata = &info->chg1_data;
+		else if (idx == SLAVE_CHARGER)
+			pdata = &info->chg2_data;
+		else
+			return -ENOTSUPP;
+
+		charger_dev_get_input_current(info->chg1_dev, input_current);
+		return 0;
+	}
+
+	return -EBUSY;
+}
 
 int charger_manager_set_input_current_limit(struct charger_consumer *consumer,
 	int idx, int input_current)
@@ -455,42 +569,6 @@ int charger_manager_set_input_current_limit(struct charger_consumer *consumer,
 
 	if (info != NULL) {
 		struct charger_data *pdata;
-
-//prize added by sunshuai Modification did not reach the high temperature 55 standard stop charging problem for mt5715 201900305 start
-#if defined(CONFIG_PRIZE_WIRELESS_RECEIVER_MAXIC_MT5715)
-    if(get_mt5715_9V_charge_status() == 1){//wireless charging 9V
-		chr_err("%s: mt5715 9V charge \n",__func__);
-	}
-	else{
-		chr_err("%s: no  mt5715 9V charge \n",__func__);
-		return 0;
-	}
-#endif
-//prize added by sunshuai Modification did not reach the high temperature 55 standard stop charging problem for mt5715 201900305 end
-
-//prize added by sunshuai Modification did not reach the high temperature 55 standard stop charging problem for ne6153 201900413 start 
-#if defined(CONFIG_PRIZE_NE6153_SUPPORT)
-    if(get_ne6153_ischarge_9V() ==true){
-		chr_err("%s: NE6153 9V charge \n",__func__);
-    }
-	else{
-		chr_err("%s: no  NE6153 9V charge \n",__func__);
-		return 0;
-	}
-#endif
-//prize added by sunshuai Modification did not reach the high temperature 55 standard stop charging problem for ne6153 201900413 end 
-
-//prize added by sunshuai, wireless charge MT5725	15W soft start, 20200428-start
-#if defined(CONFIG_PRIZE_MT5725_SUPPORT_15W)
-	if(get_MT5725_status() == 0){
-		chr_err("%s: 5725_15W  charge \n",__func__);
-	} else {
-	    chr_err("%s: no  5725_15W  charge \n",__func__);
-		return 0;
-	}
-#endif
-//prize added by sunshuai, wireless charge MT5725	15W soft start, 20200428-end
-
 
 		if (info->data.parallel_vbus) {
 			if (idx == TOTAL_CHARGER) {
@@ -505,14 +583,6 @@ int charger_manager_set_input_current_limit(struct charger_consumer *consumer,
 				pdata = &info->chg1_data;
 			else if (idx == SLAVE_CHARGER)
 				pdata = &info->chg2_data;
-#ifdef CONFIG_MTK_PUMP_EXPRESS_PLUS_50_SUPPORT
-/*prize-huangjiwu-20200730, add for rt9759 pe50 start*/
-			else if (idx == MAIN_DIVIDER_CHARGER)
-				pdata = &info->dvchg1_data;
-			else if (idx == SLAVE_DIVIDER_CHARGER)
-				pdata = &info->dvchg2_data;
-/*prize-huangjiwu-20200730, add for rt9759 pe50 end*/
-#endif
 			else
 				return -ENOTSUPP;
 			pdata->thermal_input_current_limit = input_current;
@@ -526,6 +596,25 @@ int charger_manager_set_input_current_limit(struct charger_consumer *consumer,
 	}
 	return -EBUSY;
 }
+#endif
+
+
+// int charger_manager_set_charging_current_thermal_limit(
+// 	struct charger_manager *info, int idx, int charging_current)
+// {
+
+// 	if (info != NULL) {
+// 		struct charger_data *pdata;
+// 		pdata = &info->chg1_data;
+// 		pdata->thermal_charging_current_limit = charging_current;
+// 		chr_err("%s: charging_current_limit:%d\n", __func__, charging_current);
+// 		_mtk_charger_change_current_setting(info);
+// 		_wake_up_charger(info);
+// 		return 0;
+// 	}
+// 	return -EBUSY;
+// }
+
 
 int charger_manager_set_charging_current_limit(
 	struct charger_consumer *consumer, int idx, int charging_current)
@@ -535,41 +624,6 @@ int charger_manager_set_charging_current_limit(
 	if (info != NULL) {
 		struct charger_data *pdata;
 
-//prize added by sunshuai Modification did not reach the high temperature 55 standard stop charging problem for mt5715 201900305 start
-#if defined(CONFIG_PRIZE_WIRELESS_RECEIVER_MAXIC_MT5715)
-			if(get_mt5715_9V_charge_status() == 1){//wireless charging 9V
-				chr_err("%s: mt5715 9V charge \n",__func__);
-			}
-			else{
-				chr_err("%s: no  mt5715 9V charge \n",__func__);
-				return 0;
-			}
-#endif
-//prize added by sunshuai Modification did not reach the high temperature 55 standard stop charging problem for mt5715 201900305 end
-		
-//prize added by sunshuai Modification did not reach the high temperature 55 standard stop charging problem for ne6153 201900413 start 
-#if defined(CONFIG_PRIZE_NE6153_SUPPORT)
-			if(get_ne6153_ischarge_9V() ==true){
-				chr_err("%s: NE6153 9V charge \n",__func__);
-			}
-			else{
-				chr_err("%s: no  NE6153 9V charge \n",__func__);
-				return 0;
-			}
-#endif
-//prize added by sunshuai Modification did not reach the high temperature 55 standard stop charging problem for ne6153 201900413 end 
-
-//prize added by sunshuai, wireless charge MT5725	15W soft start, 20200428-start
-#if defined(CONFIG_PRIZE_MT5725_SUPPORT_15W)
-		if(get_MT5725_status() == 0){
-			chr_err("%s: 5725_15W  charge \n",__func__);
-		} else {
-			chr_err("%s: no  5725_15W  charge \n",__func__);
-			return 0;
-		}
-#endif
-//prize added by sunshuai, wireless charge MT5725	15W soft start, 20200428-end
-
 		if (idx == MAIN_CHARGER)
 			pdata = &info->chg1_data;
 		else if (idx == SLAVE_CHARGER)
@@ -577,11 +631,11 @@ int charger_manager_set_charging_current_limit(
 		else
 			return -ENOTSUPP;
 
-		pdata->thermal_charging_current_limit = charging_current;
+		// pdata->thermal_charging_current_limit = charging_current;
 		chr_err("%s: dev:%s idx:%d en:%d\n", __func__,
 			dev_name(consumer->dev), idx, charging_current);
-		_mtk_charger_change_current_setting(info);
-		_wake_up_charger(info);
+		// _mtk_charger_change_current_setting(info);
+		// _wake_up_charger(info);
 		return 0;
 	}
 	return -EBUSY;
@@ -593,7 +647,7 @@ int charger_manager_get_charger_temperature(struct charger_consumer *consumer,
 	struct charger_manager *info = consumer->cm;
 
 	if (info != NULL) {
-		struct charger_data *pdata;
+		struct charger_data *pdata = NULL;
 
 		if (!upmu_get_rgs_chrdet()) {
 			pr_debug("[%s] No cable in, skip it\n", __func__);
@@ -606,14 +660,6 @@ int charger_manager_get_charger_temperature(struct charger_consumer *consumer,
 			pdata = &info->chg1_data;
 		else if (idx == SLAVE_CHARGER)
 			pdata = &info->chg2_data;
-#ifdef CONFIG_MTK_PUMP_EXPRESS_PLUS_50_SUPPORT
-/*prize-huangjiwu-20200730, add for rt9759 pe50 start*/
-		else if (idx == MAIN_DIVIDER_CHARGER)
-			pdata = &info->dvchg1_data;
-		else if (idx == SLAVE_DIVIDER_CHARGER)
-			pdata = &info->dvchg2_data;
-/*prize-huangjiwu-20200730, add for rt9759 pe50 end*/
-#endif
 		else
 			return -ENOTSUPP;
 
@@ -631,7 +677,7 @@ int charger_manager_force_charging_current(struct charger_consumer *consumer,
 	struct charger_manager *info = consumer->cm;
 
 	if (info != NULL) {
-		struct charger_data *pdata;
+		struct charger_data *pdata = NULL;
 
 		if (idx == MAIN_CHARGER)
 			pdata = &info->chg1_data;
@@ -664,7 +710,7 @@ int charger_manager_get_zcv(struct charger_consumer *consumer, int idx, u32 *uV)
 {
 	struct charger_manager *info = consumer->cm;
 	int ret = 0;
-	struct charger_device *pchg;
+	struct charger_device *pchg = NULL;
 
 
 	if (info != NULL) {
@@ -685,43 +731,199 @@ int charger_manager_get_zcv(struct charger_consumer *consumer, int idx, u32 *uV)
 	return 0;
 }
 
-int charger_manager_enable_chg_type_det(struct charger_consumer *consumer,
-	bool en)
+int charger_manager_enable_chg_type_det(bool en)
 {
-	struct charger_manager *info = consumer->cm;
 	struct charger_device *chg_dev;
 	int ret = 0;
+	chg_dev = get_charger_by_name("primary_chg");
+	if (chg_dev != NULL) {
 
-	if (info != NULL) {
-		switch (info->data.bc12_charger) {
-		case MAIN_CHARGER:
-			chg_dev = info->chg1_dev;
-			break;
-		case SLAVE_CHARGER:
-			chg_dev = info->chg2_dev;
-			break;
-		default:
-			chg_dev = info->chg1_dev;
-			chr_err("%s: invalid number, use main charger as default\n",
-				__func__);
-			break;
-		}
-
-		chr_err("%s: chg%d is doing bc12\n", __func__,
-			info->data.bc12_charger + 1);
+		chr_err("%s: chg1_dev is doing bc12\n", __func__);
 		ret = charger_dev_enable_chg_type_det(chg_dev, en);
 		if (ret < 0) {
-			chr_err("%s: en chgdet fail, en = %d\n", __func__, en);
+			chr_err("%s: en chgdet fail, en = %d rc = %d\n", __func__, en, ret);
 			return ret;
 		}
 	} else
 		chr_err("%s: charger_manager is null\n", __func__);
+	return 0;
+}
 
+int charger_manager_pd_is_online(void)
+{
+	if (pinfo == NULL)
+		return 0;
 
+	if (pinfo->pd_type == MTK_PD_CONNECT_PE_READY_SNK ||
+		pinfo->pd_type == MTK_PD_CONNECT_PE_READY_SNK_PD30 ||
+		pinfo->pd_type == MTK_PD_CONNECT_PE_READY_SNK_APDO)
+		return 1;
+	else
+		return 0;
+}
+int charger_manager_pe4_is_online(void)
+{
+	if (pinfo == NULL)
+		return 0;
+
+	if (mtk_pe40_get_is_connect(pinfo))
+		return 1;
+	else
+		return 0;
+}
+int charger_manager_pe2_is_online(void)
+{
+	if (pinfo == NULL)
+		return 0;
+
+	if (mtk_pe20_get_is_enable(pinfo) && mtk_pe20_get_is_connect(pinfo))
+		return 1;
+	else
+		return 0;
+}
+enum hvdcp_status charger_manager_check_hvdcp_status(void)
+{
+	if (pinfo == NULL)
+		return false;
+
+	return pinfo->hvdcp_type;
+}
+
+int charger_manager_get_ibus(int *ibus)
+{
+	if (pinfo == NULL)
+		return false;
+
+	charger_dev_get_ibus(pinfo->chg1_dev, ibus);
 
 	return 0;
 }
 
+int charger_manager_set_input_suspend(int suspend)
+{
+	pr_info("%s suspend: %d.\n", __func__, suspend);
+
+	if (pinfo == NULL)
+		return false;
+
+	if (suspend) {
+		charger_dev_set_suspend(pinfo->chg1_dev, true);
+//		charger_dev_enable(pinfo->chg2_dev, false);
+//		charger_dev_enable_powerpath(pinfo->chg1_dev, false);
+		pinfo->is_input_suspend = true;
+	} else {
+		charger_dev_set_suspend(pinfo->chg1_dev, false);
+//		charger_dev_enable(pinfo->chg2_dev, true);
+//		charger_dev_enable_powerpath(pinfo->chg1_dev, true);
+		pinfo->is_input_suspend = false;
+	}
+	// if (pinfo->usb_psy)
+	// 	power_supply_changed(pinfo->usb_psy);
+	return 0;
+}
+
+int charger_manager_is_input_suspend(void)
+{
+	if (pinfo == NULL)
+		return false;
+
+	return pinfo->is_input_suspend;
+}
+int charger_manager_get_prop_system_temp_level(void)
+{
+	if (pinfo == NULL)
+		return false;
+
+	return pinfo->system_temp_level;
+}
+
+int charger_manager_get_prop_system_temp_level_max(void)
+{
+	if (pinfo == NULL)
+		return false;
+
+	return pinfo->system_temp_level_max;
+}
+
+void charger_manager_set_prop_system_temp_level(int temp_level)
+{
+	int thermal_icl_ua = 0;
+	bool is_cn = false;
+
+	if (pinfo == NULL)
+		return ;
+	pcba_to_thermal = get_huaqin_pcba_config();
+#if defined(TARGET_PRODUCT_LANCELOT) || defined(TARGET_PRODUCT_SHIVA)
+	if (pcba_to_thermal == PCBA_J19_MP_CN)
+		is_cn = true;
+#else
+	if (pcba_to_thermal == PCBA_J15S_MP_CN)
+		is_cn = true;
+#endif
+	pr_err("thermal_pcba is %d, is_cn:%d\n", pcba_to_thermal, is_cn);
+	if (temp_level > pinfo->system_temp_level_max)
+		pinfo->system_temp_level = pinfo->system_temp_level_max;
+	else
+		pinfo->system_temp_level = temp_level;
+
+	if (is_cn == true) {
+		switch (pinfo->usb_psy->desc->type) {
+		case POWER_SUPPLY_TYPE_USB_HVDCP:
+			thermal_icl_ua = thermal_mitigation_qc2_cn[pinfo->system_temp_level];
+			break;
+		case POWER_SUPPLY_TYPE_USB_HVDCP_3:
+			thermal_icl_ua = thermal_mitigation_qc3_cn[pinfo->system_temp_level];
+			break;
+		case POWER_SUPPLY_TYPE_USB_DCP:
+		default:
+			thermal_icl_ua = thermal_mitigation_dcp_cn[pinfo->system_temp_level];
+			break;
+		}
+	} else {
+		switch (pinfo->usb_psy->desc->type) {
+		case POWER_SUPPLY_TYPE_USB_HVDCP:
+			thermal_icl_ua = thermal_mitigation_qc2[pinfo->system_temp_level];
+			break;
+		case POWER_SUPPLY_TYPE_USB_HVDCP_3:
+			thermal_icl_ua = thermal_mitigation_qc3[pinfo->system_temp_level];
+			break;
+		case POWER_SUPPLY_TYPE_USB_DCP:
+		default:
+			thermal_icl_ua = thermal_mitigation_dcp[pinfo->system_temp_level];
+			break;
+		}
+	}
+
+	if (pinfo->system_temp_level == 0)
+		thermal_icl_ua = -1;
+	if (thermal_icl_ua == 500000) {
+		thermal_is_500 = true;
+	} else {
+		thermal_is_500 = false;
+	}
+	pr_err("%s, system_temp_level:%d thermal_icl_ua:%d usb_type:%d\n", __func__,
+			pinfo->system_temp_level, thermal_icl_ua, pinfo->usb_psy->desc->type);
+
+	// pr_err("%s, system_temp_level:%d thermal_icl_ua:%d \n", __func__,
+	// 		pinfo->system_temp_level, thermal_icl_ua);
+
+	// charger_manager_set_charging_current_thermal_limit(pinfo,
+	// 		MAIN_CHARGER, thermal_icl_ua);
+	_charger_manager_set_input_current_limit(pinfo,
+			MAIN_CHARGER, thermal_icl_ua);
+}
+
+int charger_manager_check_ra_detected(void)
+{
+	if (pinfo == NULL)
+		return false;
+
+	return pinfo->ra_detected;
+}
+void charger_manager_set_ra_detected(int val)
+{
+	pinfo->ra_detected = val;
+}
 int register_charger_manager_notifier(struct charger_consumer *consumer,
 	struct notifier_block *nb)
 {
@@ -1067,25 +1269,30 @@ void do_sw_jeita_state_machine(struct charger_manager *info)
 	if (sw_jeita->sm != TEMP_T2_TO_T3) {
 		if (sw_jeita->sm == TEMP_ABOVE_T4)
 			sw_jeita->cv = info->data.jeita_temp_above_t4_cv;
-		else if (sw_jeita->sm == TEMP_T3_TO_T4)
+		else if (sw_jeita->sm == TEMP_T3_TO_T4) {
+			sw_jeita->cc = info->data.jeita_temp_t3_to_t4_cc;
 			sw_jeita->cv = info->data.jeita_temp_t3_to_t4_cv;
-		else if (sw_jeita->sm == TEMP_T2_TO_T3)
+		} else if (sw_jeita->sm == TEMP_T2_TO_T3) {
+			sw_jeita->cc = info->data.jeita_temp_t2_to_t3_cc;
 			sw_jeita->cv = 0;
-		else if (sw_jeita->sm == TEMP_T1_TO_T2)
+		} else if (sw_jeita->sm == TEMP_T1_TO_T2) {
+			sw_jeita->cc = info->data.jeita_temp_t1_to_t2_cc;
 			sw_jeita->cv = info->data.jeita_temp_t1_to_t2_cv;
-		else if (sw_jeita->sm == TEMP_T0_TO_T1)
+		} else if (sw_jeita->sm == TEMP_T0_TO_T1) {
+			sw_jeita->cc = info->data.jeita_temp_t0_to_t1_cc;
 			sw_jeita->cv = info->data.jeita_temp_t0_to_t1_cv;
-		else if (sw_jeita->sm == TEMP_BELOW_T0)
+		} else if (sw_jeita->sm == TEMP_BELOW_T0)
 			sw_jeita->cv = info->data.jeita_temp_below_t0_cv;
 		else
 			sw_jeita->cv = info->data.battery_cv;
 	} else {
+		sw_jeita->cc = info->data.jeita_temp_t2_to_t3_cc;
 		sw_jeita->cv = 0;
 	}
 
-	chr_err("[SW_JEITA]preState:%d newState:%d tmp:%d cv:%d\n",
+	chr_err("[SW_JEITA]preState:%d newState:%d tmp:%d cv:%d cc:%d\n",
 		sw_jeita->pre_sm, sw_jeita->sm, info->battery_temp,
-		sw_jeita->cv);
+		sw_jeita->cv, sw_jeita->cc);
 }
 
 static ssize_t show_sw_jeita(struct device *dev, struct device_attribute *attr,
@@ -1115,7 +1322,7 @@ static ssize_t store_sw_jeita(struct device *dev, struct device_attribute *attr,
 	return size;
 }
 
-static DEVICE_ATTR(sw_jeita, 0664, show_sw_jeita,
+static DEVICE_ATTR(sw_jeita, 0644, show_sw_jeita,
 		   store_sw_jeita);
 /* sw jeita end*/
 
@@ -1155,7 +1362,7 @@ static ssize_t store_pe20(struct device *dev, struct device_attribute *attr,
 	return size;
 }
 
-static DEVICE_ATTR(pe20, 0664, show_pe20, store_pe20);
+static DEVICE_ATTR(pe20, 0644, show_pe20, store_pe20);
 
 /* pump express series end*/
 
@@ -1170,13 +1377,17 @@ static ssize_t store_charger_log_level(struct device *dev,
 		struct device_attribute *attr, const char *buf, size_t size)
 {
 	unsigned long val = 0;
-	int ret;
+	int ret = 0;
 
 	chr_err("%s\n", __func__);
 
 	if (buf != NULL && size != 0) {
 		chr_err("%s: buf is %s\n", __func__, buf);
 		ret = kstrtoul(buf, 10, &val);
+		if (ret < 0) {
+			chr_err("%s: kstrtoul fail, ret = %d\n", __func__, ret);
+			return ret;
+		}
 		if (val < 0) {
 			chr_err("%s: val is inavlid: %ld\n", __func__, val);
 			val = 0;
@@ -1186,7 +1397,7 @@ static ssize_t store_charger_log_level(struct device *dev,
 	}
 	return size;
 }
-static DEVICE_ATTR(charger_log_level, 0664, show_charger_log_level,
+static DEVICE_ATTR(charger_log_level, 0644, show_charger_log_level,
 		store_charger_log_level);
 
 static ssize_t show_pdc_max_watt_level(struct device *dev,
@@ -1211,7 +1422,7 @@ static ssize_t store_pdc_max_watt_level(struct device *dev,
 
 	return size;
 }
-static DEVICE_ATTR(pdc_max_watt, 0664, show_pdc_max_watt_level,
+static DEVICE_ATTR(pdc_max_watt, 0644, show_pdc_max_watt_level,
 		store_pdc_max_watt_level);
 
 int mtk_get_dynamic_cv(struct charger_manager *info, unsigned int *cv)
@@ -1307,6 +1518,7 @@ int charger_psy_event(struct notifier_block *nb, unsigned long event, void *v)
 
 void mtk_charger_int_handler(void)
 {
+	int temp;
 	chr_err("%s\n", __func__);
 
 	if (pinfo == NULL) {
@@ -1325,8 +1537,12 @@ void mtk_charger_int_handler(void)
 		chr_err("cable_out_cnt=%d\n", pinfo->cable_out_cnt);
 		mutex_unlock(&pinfo->cable_out_lock);
 		charger_manager_notifier(pinfo, CHARGER_NOTIFY_STOP_CHARGING);
-	} else
-		charger_manager_notifier(pinfo, CHARGER_NOTIFY_START_CHARGING);
+	} else {
+		temp = battery_get_bat_temperature();
+		pr_err("dhx---temp:%d\n", temp);
+		if (temp >= 0 && temp <= 60)
+			charger_manager_notifier(pinfo, CHARGER_NOTIFY_START_CHARGING);
+	}
 
 	chr_err("wake_up_charger\n");
 	_wake_up_charger(pinfo);
@@ -1347,9 +1563,11 @@ static int mtk_charger_plug_in(struct charger_manager *info,
 	if (info->plug_in != NULL)
 		info->plug_in(info);
 
+	memset(&pinfo->sc.data, 0, sizeof(struct scd_cmd_param_t_1));
+	pinfo->sc.disable_in_this_plug = false;
+	wakeup_sc_algo_cmd(&pinfo->sc.data, SC_EVENT_PLUG_IN, 0);
 	charger_dev_set_input_current(info->chg1_dev,
 				info->chg1_data.input_current_limit);
-				printk("ycj current %d\n",info->chg1_data.input_current_limit);
 	charger_dev_plug_in(info->chg1_dev);
 	return 0;
 }
@@ -1370,6 +1588,8 @@ static int mtk_charger_plug_out(struct charger_manager *info)
 	if (info->plug_out != NULL)
 		info->plug_out(info);
 
+	memset(&pinfo->sc.data, 0, sizeof(struct scd_cmd_param_t_1));
+	wakeup_sc_algo_cmd(&pinfo->sc.data, SC_EVENT_PLUG_OUT, 0);
 	charger_dev_set_input_current(info->chg1_dev, 100000);
 	charger_dev_set_mivr(info->chg1_dev, info->data.min_charger_voltage);
 	charger_dev_plug_out(info->chg1_dev);
@@ -1436,7 +1656,7 @@ static bool mtk_chg_check_vbus(struct charger_manager *info)
 	if (vchr > info->data.max_charger_voltage) {
 		chr_err("%s: vbus(%d mV) > %d mV\n", __func__, vchr / 1000,
 			info->data.max_charger_voltage / 1000);
-		return false;
+		return true;
 	}
 
 	return true;
@@ -1459,55 +1679,6 @@ static void mtk_battery_notify_VCharger_check(struct charger_manager *info)
 #endif
 }
 
-/*prize sunshuai for 6516hx customer  20200929 start*/
-#if defined(CONFIG_PRIZE_CHARGE_CTRL_HX)
-static void mtk_battery_notify_VBatTemp_check(struct charger_manager *info)
-{
-	int is_poweroff_charge = 0;
-    unsigned int boot_mode = get_boot_mode();	
-    
-	if((boot_mode == KERNEL_POWER_OFF_CHARGING_BOOT) || (boot_mode == LOW_POWER_OFF_CHARGING_BOOT))
-		is_poweroff_charge =1;
-	
-	chr_err("[mtk_battery_notify_VBatTemp_check] boot_mode =%d  is_poweroff_charge =%d\n",boot_mode,is_poweroff_charge);
-	
-	if(is_poweroff_charge == 0)
-		return;
-
-#if defined(BATTERY_NOTIFY_CASE_0002_VBATTEMP)
-	if (info->battery_temp >= info->thermal.max_charge_temp) {
-		info->notify_code |= CHG_BAT_OT_STATUS;
-		chr_err("[BATTERY] bat_temp(%d) out of range(too high)\n",
-			info->battery_temp);
-		mtk_chgstat_notify(info);
-	} else {
-		info->notify_code &= ~CHG_BAT_OT_STATUS;
-	}
-
-	if (info->enable_sw_jeita == true) {
-		if (info->battery_temp < info->data.temp_neg_10_thres) {
-			info->notify_code |= CHG_BAT_LT_STATUS;
-			chr_err("bat_temp(%d) out of range(too low)\n",
-				info->battery_temp);
-			mtk_chgstat_notify(info);
-		} else {
-			info->notify_code &= ~CHG_BAT_LT_STATUS;
-		}
-	} else {
-//#ifdef BAT_LOW_TEMP_PROTECT_ENABLE
-		if (info->battery_temp < info->thermal.min_charge_temp) {
-			info->notify_code |= CHG_BAT_LT_STATUS;
-			chr_err("bat_temp(%d) out of range(too low)\n",
-				info->battery_temp);
-			mtk_chgstat_notify(info);
-		} else {
-			info->notify_code &= ~CHG_BAT_LT_STATUS;
-		}
-//#endif
-	}
-#endif
-}
-#else
 static void mtk_battery_notify_VBatTemp_check(struct charger_manager *info)
 {
 #if defined(BATTERY_NOTIFY_CASE_0002_VBATTEMP)
@@ -1543,8 +1714,6 @@ static void mtk_battery_notify_VBatTemp_check(struct charger_manager *info)
 	}
 #endif
 }
-#endif
-/*prize sunshuai for 6516hx customer  20200929 end*/
 
 static void mtk_battery_notify_UI_test(struct charger_manager *info)
 {
@@ -1676,116 +1845,13 @@ static void mtk_chg_get_tchg(struct charger_manager *info)
 			pdata->junction_temp_max = tchg_max;
 		}
 	}
-#ifdef CONFIG_MTK_PUMP_EXPRESS_PLUS_50_SUPPORT
-/*prize-huangjiwu-20200730, add for rt9759 pe50 start*/
-	if (info->dvchg1_dev) {
-		pdata = &info->dvchg1_data;
-		ret = charger_dev_get_adc(info->dvchg1_dev, ADC_CHANNEL_TEMP_JC,
-					  &tchg_min, &tchg_max);
-		if (ret < 0) {
-			pdata->junction_temp_min = -127;
-			pdata->junction_temp_max = -127;
-		} else {
-			pdata->junction_temp_min = tchg_min;
-			pdata->junction_temp_max = tchg_max;
-		}
-	}
-
-	if (info->dvchg2_dev) {
-		pdata = &info->dvchg2_data;
-		ret = charger_dev_get_adc(info->dvchg2_dev, ADC_CHANNEL_TEMP_JC,
-					  &tchg_min, &tchg_max);
-		if (ret < 0) {
-			pdata->junction_temp_min = -127;
-			pdata->junction_temp_max = -127;
-		} else {
-			pdata->junction_temp_min = tchg_min;
-			pdata->junction_temp_max = tchg_max;
-		}
-	}
-/*prize-huangjiwu-20200730, add for rt9759 pe50 end*/
-#endif
 }
-/*prize-add by sunshuai for for Vietnam customer  20200106 start  */
-#if defined(CONFIG_PRIZE_CHARGE_CTRL_VIETNAM)
-static void charger_check_step(struct charger_manager *info){
-    int temperature;
-	temperature = info->battery_temp;
-	chr_err("charger_check_step before choice current_step =%d temp=%d \n",info->step_info.current_step,temperature);
-    if(temperature >= info->step_info.start_step1_temp && temperature < info->step_info.start_step2_temp){
-       info->step_info.current_step = STEP_T1;
-       chr_err("charger_check_step charge step 1 temperature =%d battery_vol =%d\n",temperature,g_cw2015_vol);
-    } else if (temperature >= info->step_info.start_step2_temp && temperature < info->step_info.start_step3_temp){
-       if(info->step_info.current_step == STEP_T1 || info->step_info.current_step == STEP_INIT){
-			info->step_info.current_step = STEP_T2;
-            chr_err("charger_check_step charge step 2 temperature =%d battery_vol =%d\n",temperature,g_cw2015_vol);
-       }
-
-	   if(info->step_info.current_step == STEP_T3 && temperature <= info->step_info.exit_step3_temp){
-			info->step_info.current_step = STEP_T2;
-			chr_err("charger_check_step quit step3 to step2 temperature =%d battery_vol =%d\n",temperature,g_cw2015_vol);
-	   }	   
-   } else if (temperature >= info->step_info.start_step3_temp && temperature <= info->step_info.end_step3_temp){
-	   info->step_info.current_step = STEP_T3;
-	   chr_err("charger_check_step charge step 3 temperature =%d battery_vol =%d\n",temperature,g_cw2015_vol);
-   } else {
-          chr_err("temp >50 or < 0 temperature =%d  battery_vol =%d\n",temperature,g_cw2015_vol);
-   }
-   chr_err("charger_check_status after choice  current_step =%d \n",info->step_info.current_step);
-}
-#endif
-/*prize-add by sunshuai for for Vietnam customer  20200106 end  */
-
-
-/*prize-add by sunshuai for for gigast customer  20200706 start  */
-#if defined(CONFIG_PRIZE_CHARGE_CURRENT_CTRL_GIGAST)
-static void charger_check_step(struct charger_manager *info){
-    int temperature;
-	temperature = info->battery_temp;
-	chr_err("charger_check_step before choice current_step =%d temp=%d \n",info->step_info.current_step,temperature);
-	
-    if(temperature >= info->step_info.start_step1_temp && temperature < info->step_info.start_step2_temp){
-       info->step_info.current_step = STEP_T1;
-	   info->step_info.enter_step3_battery_percentage = -1;
-       chr_err("charger_check_step charge step 1 temperature =%d battery_vol =%d\n",temperature,g_cw2015_vol);
-    }
-	else if (temperature >= info->step_info.start_step2_temp && temperature < info->step_info.start_step3_temp)
-	{
-       if(info->step_info.current_step == STEP_T1 || info->step_info.current_step == STEP_INIT || info->step_info.current_step == STEP_T3)
-	   {
-			info->step_info.current_step = STEP_T2;
-			info->step_info.enter_step3_battery_percentage = -1;
-            chr_err("charger_check_step charge step 2 temperature =%d battery_vol =%d\n",temperature,g_cw2015_vol);
-       }
-   }
-   else if (temperature >= info->step_info.start_step3_temp)
-   {
-	   info->step_info.current_step = STEP_T3;
-
-	   if((g_cw2015_vol > info->step_info.temp_stp3_cv_voltage) && info->step_info.enter_step3_battery_percentage == -1){
-	      info->step_info.enter_step3_battery_percentage = g_cw2015_capacity;
-		  chr_err("charger_check_step charge step 3 bat vot > 4.1V \n");
-	   }
-		  
-	   chr_err("charger_check_step charge step 3 temperature =%d battery_vol =%d\n",temperature,g_cw2015_vol);
-   }
-   else
-   {
-          chr_err("temp >50 or < 0 temperature =%d  battery_vol =%d\n",temperature,g_cw2015_vol);
-   }
-   chr_err("charger_check_status after choice  current_step =%d \n",info->step_info.current_step);
-}
-#endif
-
-/*prize-add by sunshuai for for gigast customer  20200706 end  */
-
-
 
 static void charger_check_status(struct charger_manager *info)
 {
 	bool charging = true;
-	int temperature;
-	struct battery_thermal_protection_data *thermal;
+	int temperature = 0;
+	struct battery_thermal_protection_data *thermal = NULL;
 
 	if (mt_get_charger_type() == CHARGER_UNKNOWN)
 		return;
@@ -1844,19 +1910,6 @@ static void charger_check_status(struct charger_manager *info)
 		}
 	}
 
-/*prize-add by sunshuai for for Vietnam customer  20200106 start  */
-#if defined(CONFIG_PRIZE_CHARGE_CTRL_VIETNAM) || defined(CONFIG_PRIZE_CHARGE_CURRENT_CTRL_GIGAST)
-    charger_check_step(info);
-#endif
-/*prize-add by sunshuai for for Vietnam customer  20200106 end  */
-
-//prize sunshuai for 6516hx customer  20200929 start 
-#if defined(CONFIG_PRIZE_CHARGE_CTRL_HX)
-	prize_charger_check_step(info);
-#endif
-//prize sunshuai for 6516hx customer  20200929 end 
-
-
 	mtk_chg_get_tchg(info);
 
 	if (!mtk_chg_check_vbus(info)) {
@@ -1870,15 +1923,18 @@ static void charger_check_status(struct charger_manager *info)
 		charging = false;
 	if (info->vbusov_stat)
 		charging = false;
+	if (info->sc.disable_charger == true)
+		charging = false;
 
 stop_charging:
 	mtk_battery_notify_check(info);
 
-	chr_err("tmp:%d (jeita:%d sm:%d cv:%d en:%d) (sm:%d) en:%d c:%d s:%d ov:%d %d %d\n",
+	chr_err("tmp:%d (jeita:%d sm:%d cv:%d en:%d) (sm:%d) en:%d c:%d s:%d ov:%d sc:%d %d %d\n",
 		temperature, info->enable_sw_jeita, info->sw_jeita.sm,
 		info->sw_jeita.cv, info->sw_jeita.charging, thermal->sm,
 		charging, info->cmd_discharging, info->safety_timeout,
-		info->vbusov_stat, info->can_charging, charging);
+		info->vbusov_stat, info->sc.disable_charger,
+		info->can_charging, charging);
 
 	if (charging != info->can_charging)
 		_charger_manager_enable_charging(info->chg1_consumer,
@@ -1898,9 +1954,10 @@ static void kpoc_power_off_check(struct charger_manager *info)
 			vbus = battery_get_vbus();
 			if (vbus >= 0 && vbus < 2500 && !mt_charger_plugin()) {
 				chr_err("Unplug Charger/USB in KPOC mode, shutdown\n");
+				msleep(4000);
 				chr_err("%s: system_state=%d\n", __func__,
 					system_state);
-				if (system_state != SYSTEM_POWER_OFF)
+			//	if (system_state != SYSTEM_POWER_OFF)
 					kernel_power_off();
 			}
 		}
@@ -1967,7 +2024,6 @@ static void mtk_charger_start_timer(struct charger_manager *info)
 {
 	struct timespec time, time_now;
 	ktime_t ktime;
-	//prize add by liaojie for patch MTK_PATCH:t-alps-release-q0.mp1-V6 20191218-start
 	int ret = 0;
 
 	/* If the timer was already set, cancel it */
@@ -1976,17 +2032,16 @@ static void mtk_charger_start_timer(struct charger_manager *info)
 		chr_err("%s: callback was running, skip timer\n", __func__);
 		return;
 	}
-//prize add by liaojie for patch MTK_PATCH:t-alps-release-q0.mp1-V6 20191218-end
+
 	get_monotonic_boottime(&time_now);
 	time.tv_sec = info->polling_interval;
 	time.tv_nsec = 0;
 	info->endtime = timespec_add(time_now, time);
 
 	ktime = ktime_set(info->endtime.tv_sec, info->endtime.tv_nsec);
-//prize add by liaojie for patch MTK_PATCH:t-alps-release-q0.mp1-V6 20191218-start
+
 	chr_err("%s: alarm timer start:%d, %ld %ld\n", __func__, ret,
 		info->endtime.tv_sec, info->endtime.tv_nsec);
-		//prize add by liaojie for patch MTK_PATCH:t-alps-release-q0.mp1-V6 20191218-end
 	alarm_start(&pinfo->charger_timer, ktime);
 }
 
@@ -2002,12 +2057,22 @@ static void mtk_charger_init_timer(struct charger_manager *info)
 #endif /* CONFIG_PM */
 }
 
+static void hvdcp_vbus_check(struct charger_manager *info)
+{
+	int vbus;
+
+	vbus = battery_get_vbus();
+	// if (vbus > 7400) {
+	// 	charger_dev_set_hvdcp_dpdm(info->chg1_dev);
+	// }
+}
+
 static int charger_routine_thread(void *arg)
 {
 	struct charger_manager *info = arg;
-	unsigned long flags;
-	bool is_charger_on;
-	int bat_current, chg_current;
+	unsigned long flags = 0;
+	bool is_charger_on = false;
+	int bat_current = 0, chg_current = 0;
 
 	while (1) {
 		wait_event(info->wait_que,
@@ -2018,10 +2083,10 @@ static int charger_routine_thread(void *arg)
 		if (!info->charger_wakelock.active)
 			__pm_stay_awake(&info->charger_wakelock);
 		spin_unlock_irqrestore(&info->slock, flags);
-
 		info->charger_thread_timeout = false;
 		bat_current = battery_get_bat_current();
 		chg_current = pmic_get_charging_current();
+		hvdcp_vbus_check(info);
 		chr_err("Vbat=%d,Ibat=%d,I=%d,VChr=%d,T=%d,Soc=%d:%d,CT:%d:%d hv:%d pd:%d:%d\n",
 			battery_get_bat_voltage(), bat_current, chg_current,
 			battery_get_vbus(), battery_get_bat_temperature(),
@@ -2050,7 +2115,9 @@ static int charger_routine_thread(void *arg)
 			if (is_charger_on == true) {
 				if (info->do_algorithm)
 					info->do_algorithm(info);
-			}
+				wakeup_sc_algo_cmd(&pinfo->sc.data, SC_EVENT_CHARGING, 0);
+			} else
+				wakeup_sc_algo_cmd(&pinfo->sc.data, SC_EVENT_STOP_CHARGING, 0);
 		} else
 			chr_debug("disable charging\n");
 
@@ -2065,86 +2132,11 @@ static int charger_routine_thread(void *arg)
 	return 0;
 }
 
-/*prize-add by sunshuai for for gigast customer  20200706 start  */
-#ifdef CONFIG_PRIZE_CHARGE_CURRENT_CTRL_GIGAST
-static void  prize_gigast_parse_dt(struct charger_manager *info,
-				struct device_node *np)
-{
-    u32 val;
-    if (of_property_read_u32(np, "start_step1_temp", &val) >= 0) {
-			info->step_info.start_step1_temp = val;
-		} else {
-			chr_err(
-				"use default start_step1_temp:%d\n", -5);
-			info->step_info.start_step1_temp = -5;
-	}
-
-	if (of_property_read_u32(np, "start_step2_temp", &val) >= 0) {
-			info->step_info.start_step2_temp = val;
-	} else {
-			chr_err(
-				"use default start_step2_temp:%d\n", 15);
-			info->step_info.start_step2_temp = 15;
-	}
-
-	if (of_property_read_u32(np, "start_step3_temp", &val) >= 0) {
-			info->step_info.start_step3_temp = val;
-	} else {
-			chr_err(
-				"use default start_step3_temp:%d\n", 45);
-			info->step_info.start_step3_temp = 45;
-	}
-
-	if (of_property_read_u32(np, "step1_max_current", &val) >= 0) {
-			info->step_info.step1_max_current = val;
-	} else {
-			chr_err(
-				"use default end_step1_max_current %d\n", 1260000);
-			info->step_info.step1_max_current = 1260000;
-	}
-
-	if (of_property_read_u32(np, "step3_vot1_current", &val) >= 0) {
-			info->step_info.step3_vot1_current = val;
-	} else {
-			chr_err(
-				"use default step3_vot1_current %d\n", 1470000);
-			info->step_info.step3_vot1_current = 1470000;
-	}
-
-	if (of_property_read_u32(np, "step3_vot2_current", &val) >= 0) {
-			info->step_info.step3_vot2_current = val;
-	} else {
-			chr_err(
-				"use default step3_vot2_current %d\n", 840000);
-			info->step_info.step3_vot2_current = 840000;
-	}
-
-    if (of_property_read_u32(np, "temp_stp3_cv_voltage", &val) >= 0) {
-			info->step_info.temp_stp3_cv_voltage = val;
-	} else {
-			chr_err(
-				"use default temp_stp3_cv_voltage:%d\n", 4350000);
-			info->step_info.temp_stp3_cv_voltage = 4350000;
-	}
-
-	info->step_info.current_step = STEP_INIT;
-	chr_err("info->step_info.start_step1_temp:%d\n", info->step_info.start_step1_temp);
-	chr_err("info->step_info.start_step2_temp:%d\n", info->step_info.start_step2_temp);
-	chr_err("info->step_info.start_step3_temp:%d\n", info->step_info.start_step3_temp);
-	chr_err("info->step_info.step1_max_current:%d\n", info->step_info.step1_max_current);
-	chr_err("info->step_info.step3_vot1_current:%d\n", info->step_info.step3_vot1_current);
-	chr_err("info->step_info.step3_vot2_current:%d\n", info->step_info.step3_vot2_current);
-	chr_err("info->step_info.temp_stp3_cv_voltage:%d\n", info->step_info.temp_stp3_cv_voltage);
-}
-#endif
-/*prize-add by sunshuai for for gigast customer  20200706 end  */
-
 static int mtk_charger_parse_dt(struct charger_manager *info,
 				struct device *dev)
 {
 	struct device_node *np = dev->of_node;
 	u32 val;
-
 	chr_err("%s: starts\n", __func__);
 
 	if (!np) {
@@ -2177,11 +2169,6 @@ static int mtk_charger_parse_dt(struct charger_manager *info,
 	info->enable_pe_plus = of_property_read_bool(np, "enable_pe_plus");
 	info->enable_pe_2 = of_property_read_bool(np, "enable_pe_2");
 	info->enable_pe_4 = of_property_read_bool(np, "enable_pe_4");
-#ifdef CONFIG_MTK_PUMP_EXPRESS_PLUS_50_SUPPORT
-/*prize-huangjiwu-20200730, add for rt9759 pe50 start*/
-	info->enable_pe_5 = of_property_read_bool(np, "enable_pe_5");
-/*prize-huangjiwu-20200730, add for rt9759 pe50 end*/
-#endif
 	info->enable_type_c = of_property_read_bool(np, "enable_type_c");
 	info->enable_dynamic_mivr =
 			of_property_read_bool(np, "enable_dynamic_mivr");
@@ -2203,6 +2190,7 @@ static int mtk_charger_parse_dt(struct charger_manager *info,
 		chr_err("use default V_CHARGER_MAX:%d\n", V_CHARGER_MAX);
 		info->data.max_charger_voltage = V_CHARGER_MAX;
 	}
+	info->data.max_charger_voltage = 10500000;
 	info->data.max_charger_voltage_setting = info->data.max_charger_voltage;
 
 	if (of_property_read_u32(np, "min_charger_voltage", &val) >= 0)
@@ -2281,13 +2269,9 @@ static int mtk_charger_parse_dt(struct charger_manager *info,
 			AC_CHARGER_CURRENT);
 		info->data.ac_charger_current = AC_CHARGER_CURRENT;
 	}
-	#ifdef CONFIG_MTK_PUMP_EXPRESS_PLUS_50_SUPPORT
-/*prize-huangjiwu-20200730, add for rt9759 pe50 start*/
+
 	info->data.pd_charger_current = 3000000;
-	#else
-	info->data.pd_charger_current = 2000000;  //prize modify sunshuai  20200715 for pd charger current
-/*prize-huangjiwu-20200730, add for rt9759 pe50 end*/
-	#endif
+
 	if (of_property_read_u32(np, "ac_charger_input_current", &val) >= 0)
 		info->data.ac_charger_input_current = val;
 	else {
@@ -2343,6 +2327,30 @@ static int mtk_charger_parse_dt(struct charger_manager *info,
 	}
 
 	/* sw jeita */
+	if (of_property_read_u32(np, "jeita_temp_t3_to_t4_cc", &val) >= 0) {
+		info->data.jeita_temp_t3_to_t4_cc = val;
+		chr_err("use JEITA_TEMP_T3_TO_T4_CC:%d\n",
+			info->data.jeita_temp_t3_to_t4_cc);
+	}
+
+	if (of_property_read_u32(np, "jeita_temp_t2_to_t3_cc", &val) >= 0) {
+		info->data.jeita_temp_t2_to_t3_cc = val;
+		chr_err("use default JEITA_TEMP_T2_TO_T3_CC:%d\n",
+			info->data.jeita_temp_t2_to_t3_cc);
+	}
+
+	if (of_property_read_u32(np, "jeita_temp_t1_to_t2_cc", &val) >= 0) {
+		info->data.jeita_temp_t1_to_t2_cc = val;
+		chr_err("use default JEITA_TEMP_T1_TO_T2_CC:%d\n",
+			info->data.jeita_temp_t1_to_t2_cc);
+	}
+
+	if (of_property_read_u32(np, "jeita_temp_t0_to_t1_cc", &val) >= 0) {
+		info->data.jeita_temp_t0_to_t1_cc = val;
+		chr_err("use default JEITA_TEMP_T0_TO_T1_CC:%d\n",
+			info->data.jeita_temp_t0_to_t1_cc);
+	}
+
 	if (of_property_read_u32(np, "jeita_temp_above_t4_cv", &val) >= 0)
 		info->data.jeita_temp_above_t4_cv = val;
 	else {
@@ -2865,73 +2873,8 @@ static int mtk_charger_parse_dt(struct charger_manager *info,
 	}
 
 	chr_err("algorithm name:%s\n", info->algorithm_name);
-	
-//prize-add by sunshuai for vestel  customer  requires charging to be controlled according to the battery specification 201900724 start 
-#if defined(CONFIG_PRIZE_CHARGE_CTRL_VIETNAM)
-	if (of_property_read_u32(np, "start_step1_temp", &val) >= 0) {
-			info->step_info.start_step1_temp = val;
-		} else {
-			chr_err(
-				"use default start_step1_temp:%d\n", -5);
-			info->step_info.start_step1_temp = -5;
-	}
 
-	if (of_property_read_u32(np, "start_step2_temp", &val) >= 0) {
-			info->step_info.start_step2_temp = val;
-	} else {
-			chr_err(
-				"use default start_step2_temp:%d\n", 15);
-			info->step_info.start_step2_temp = 15;
-	}
-
-	if (of_property_read_u32(np, "start_step3_temp", &val) >= 0) {
-			info->step_info.start_step3_temp = val;
-	} else {
-			chr_err(
-				"use default start_step3_temp:%d\n", 45);
-			info->step_info.start_step3_temp = 45;
-	}
-
-	if (of_property_read_u32(np, "end_step3_temp", &val) >= 0) {
-			info->step_info.end_step3_temp = val;
-	} else {
-			chr_err(
-				"use default end_step3_temp:%d\n", 55);
-			info->step_info.end_step3_temp = 55;
-	}
-
-	if (of_property_read_u32(np, "exit_step3_temp", &val) >= 0) {
-			info->step_info.exit_step3_temp = val;
-	} else {
-			chr_err(
-				"use default exit_step3_temp:%d\n", 40);
-			info->step_info.exit_step3_temp = 40;
-	}
-
-   	if (of_property_read_u32(np, "temp_stp3_cv_voltage", &val) >= 0) {
-			info->step_info.temp_stp3_cv_voltage = val;
-	} else {
-			chr_err(
-				"use default exit_step3_temp:%d\n", 4350000);
-			info->step_info.temp_stp3_cv_voltage = 4350000;
-	}
-
-	info->step_info.current_step = STEP_INIT;
-	chr_err("info->step_info.start_step1_temp:%d\n", info->step_info.start_step1_temp);
-	chr_err("info->step_info.start_step2_temp:%d\n", info->step_info.start_step2_temp);
-	chr_err("info->step_info.start_step3_temp:%d\n", info->step_info.start_step3_temp);
-	chr_err("info->step_info.end_step3_temp:%d\n", info->step_info.end_step3_temp);
-	chr_err("info->step_info.exit_step3_temp:%d\n", info->step_info.exit_step3_temp);
-
-#endif
-//prize-add by sunshuai for vestel  customer  requires charging to be controlled according to the battery specification 201900724 end 
-
-/*prize-add by sunshuai for for gigast customer  20200706 start  */
-#ifdef CONFIG_PRIZE_CHARGE_CURRENT_CTRL_GIGAST
-    prize_gigast_parse_dt(info,np);
-#endif
-/*prize-add by sunshuai for for gigast customer  20200706 end  */
-
+	info->system_temp_level_max = THERMAL_MAX - 1;
 
 	return 0;
 }
@@ -3003,7 +2946,7 @@ static ssize_t store_input_current(struct device *dev,
 	}
 	return size;
 }
-static DEVICE_ATTR(input_current, 0664, show_input_current,
+static DEVICE_ATTR(input_current, 0644, show_input_current,
 		store_input_current);
 
 static ssize_t show_chg1_current(struct device *dev,
@@ -3034,7 +2977,7 @@ static ssize_t store_chg1_current(struct device *dev,
 	}
 	return size;
 }
-static DEVICE_ATTR(chg1_current, 0664, show_chg1_current, store_chg1_current);
+static DEVICE_ATTR(chg1_current, 0644, show_chg1_current, store_chg1_current);
 
 static ssize_t show_chg2_current(struct device *dev,
 		struct device_attribute *attr, char *buf)
@@ -3064,7 +3007,7 @@ static ssize_t store_chg2_current(struct device *dev,
 	}
 	return size;
 }
-static DEVICE_ATTR(chg2_current, 0664, show_chg2_current, store_chg2_current);
+static DEVICE_ATTR(chg2_current, 0644, show_chg2_current, store_chg2_current);
 
 static ssize_t show_BatNotify(struct device *dev,
 		struct device_attribute *attr, char *buf)
@@ -3094,7 +3037,7 @@ static ssize_t store_BatNotify(struct device *dev,
 	return size;
 }
 
-static DEVICE_ATTR(BatteryNotify, 0664, show_BatNotify, store_BatNotify);
+static DEVICE_ATTR(BatteryNotify, 0644, show_BatNotify, store_BatNotify);
 
 static ssize_t show_BN_TestMode(struct device *dev,
 		struct device_attribute *attr, char *buf)
@@ -3121,7 +3064,7 @@ static ssize_t store_BN_TestMode(struct device *dev,
 	}
 	return size;
 }
-static DEVICE_ATTR(BN_TestMode, 0664, show_BN_TestMode, store_BN_TestMode);
+static DEVICE_ATTR(BN_TestMode, 0644, show_BN_TestMode, store_BN_TestMode);
 
 static ssize_t show_ADC_Charger_Voltage(struct device *dev,
 		struct device_attribute *attr, char *buf)
@@ -3139,98 +3082,6 @@ static ssize_t show_ADC_Charger_Voltage(struct device *dev,
 
 static DEVICE_ATTR(ADC_Charger_Voltage, 0444, show_ADC_Charger_Voltage, NULL);
 
-
-//add by mahuiyin 20190410 start
-#ifdef CONFIG_MTK_DUAL_CHARGER_SUPPORT
-int is_chg2_exist = 0;
-///sys/devices/platform/charger/chg2_exist
-static ssize_t show_chg2_exist(struct device *dev, struct device_attribute *attr, char *buf)
-{
-	return sprintf(buf, "%u\n", is_chg2_exist);
-}
-static DEVICE_ATTR(chg2_exist, 0664, show_chg2_exist, NULL);
-#endif
-//add by mahuiyin 20190410 end
-
-//prize add by sunshuai 2020-0407 for Charging restrictions start
-#if defined (CONFIG_PRIZE_GIGASET_CHARGE_RESTRICTION)
-static ssize_t show_cmd_charge_disable(struct device *dev,
-		struct device_attribute *attr, char *buf)
-{
-	struct charger_manager *pinfo = dev->driver_data;
-
-	pr_info("[charge] %s : %d\n",__func__, pinfo->cmd_discharging);
-	return sprintf(buf, "%d\n",pinfo->cmd_discharging);
-}
-
-static ssize_t store_cmd_charge_disable(struct device *dev,
-		struct device_attribute *attr, const char *buf, size_t size)
-{
-	struct charger_manager *pinfo = dev->driver_data;
-	unsigned int reg = 0;
-	int ret;
-	bool chg2_chip_enabled = false;
-	charger_dev_is_chip_enabled(pinfo->chg2_dev, &chg2_chip_enabled);
-
-	pr_info("[charge] %s\n", __func__);
-	if (buf != NULL && size != 0) {
-		pr_info("[store_cmd_charge_disable] buf is %s and size is %zu\n", buf, size);
-		ret = kstrtouint(buf, 16, &reg);
-		if(reg == 1){
-		   pinfo->cmd_discharging = true;
-		}else if(reg == 0){
-		   pinfo->cmd_discharging = false;
-		}else{
-		  pr_info("[store_cmd_charge_disable] input err please 0 or 1\n");
-		}
-
-		if((pinfo->chr_type != CHARGER_UNKNOWN) && (reg == 1)){
-		   charger_dev_enable(pinfo->chg1_dev, false);
-		   if(chg2_chip_enabled){
-		   	   charger_dev_enable(pinfo->chg2_dev, false);
-			   charger_dev_enable_chip(pinfo->chg2_dev, false);
-		   }
-		   charger_manager_notifier(pinfo,CHARGER_NOTIFY_STOP_CHARGING);
-		   pr_info("[store_cmd_charge_disable] disable charge\n");
-		}else if((pinfo->chr_type != CHARGER_UNKNOWN) && (reg == 0)){
-		   charger_dev_enable(pinfo->chg1_dev, true);
-		   charger_manager_notifier(pinfo,CHARGER_NOTIFY_START_CHARGING);
-		   pr_info("[store_cmd_charge_disable]  enable charge \n");
-		}else {
-		   pr_info("[store_cmd_charge_disable]  No USB connection \n");
-		}
-	}
-	return size;
-}
-static DEVICE_ATTR(cmd_charge_disable, 0664, show_cmd_charge_disable,
-		store_cmd_charge_disable);
-
-bool get_cmd_charge_disable(void){
-   pr_info("[charge] %s cmd_discharging =%d \n", __func__,pinfo->cmd_discharging);
-   return pinfo->cmd_discharging;
-}
-EXPORT_SYMBOL(get_cmd_charge_disable);
-#endif
-//prize add by sunshuai 2020-0407 for Charging restrictions end
-
-//prize added by sunshuai, 5725 Wireless charging type identification 20200805-start
-#if defined(CONFIG_PRIZE_MT5725_SUPPORT_15W)
-static ssize_t show_wireless_status(struct device *dev,
-		struct device_attribute *attr, char *buf)
-{
-   enum wireless_charge_protocol type = PROTOCOL_UNKNOWN;
-   
-   if(pinfo->chr_type == NONSTANDARD_CHARGER)
-	   type = check_wireless_charge_status();
-
-	pr_info(" %s type =%d\n",__func__, type);
-	return sprintf(buf, "%d\n",type);
-}
-
-static DEVICE_ATTR(wireless_status, 0664, show_wireless_status,NULL);
-#endif
-//prize added by sunshuai, 5725 Wireless charging type identification 20200805-end
-
 /* procfs */
 static int mtk_chg_current_cmd_show(struct seq_file *m, void *data)
 {
@@ -3244,14 +3095,19 @@ static ssize_t mtk_chg_current_cmd_write(struct file *file,
 		const char *buffer, size_t count, loff_t *data)
 {
 	int len = 0;
-	char desc[32];
+	char desc[32] = {0};
 	int current_unlimited = 0;
 	int cmd_discharging = 0;
 	struct charger_manager *info = PDE_DATA(file_inode(file));
 
+	if (!info)
+		return -EINVAL;
+	if (count <= 0)
+		return -EINVAL;
+
 	len = (count < (sizeof(desc) - 1)) ? count : (sizeof(desc) - 1);
 	if (copy_from_user(desc, buffer, len))
-		return 0;
+		return -EFAULT;
 
 	desc[len] = '\0';
 
@@ -3293,14 +3149,18 @@ static ssize_t mtk_chg_en_power_path_write(struct file *file,
 		const char *buffer, size_t count, loff_t *data)
 {
 	int len = 0, ret = 0;
-	char desc[32];
+	char desc[32] = {0};
 	unsigned int enable = 0;
 	struct charger_manager *info = PDE_DATA(file_inode(file));
 
+	if (!info)
+		return -EINVAL;
+	if (count <= 0)
+		return -EINVAL;
 
 	len = (count < (sizeof(desc) - 1)) ? count : (sizeof(desc) - 1);
 	if (copy_from_user(desc, buffer, len))
-		return 0;
+		return -EFAULT;
 
 	desc[len] = '\0';
 
@@ -3330,13 +3190,18 @@ static ssize_t mtk_chg_en_safety_timer_write(struct file *file,
 	const char *buffer, size_t count, loff_t *data)
 {
 	int len = 0, ret = 0;
-	char desc[32];
+	char desc[32] = {0};
 	unsigned int enable = 0;
 	struct charger_manager *info = PDE_DATA(file_inode(file));
 
+	if (!info)
+		return -EINVAL;
+	if (count <= 0)
+		return -EINVAL;
+
 	len = (count < (sizeof(desc) - 1)) ? count : (sizeof(desc) - 1);
 	if (copy_from_user(desc, buffer, len))
-		return 0;
+		return -EFAULT;
 
 	desc[len] = '\0';
 
@@ -3423,37 +3288,11 @@ static int mtk_charger_setup_files(struct platform_device *pdev)
 		return -ENOMEM;
 	}
 
-//add by mahuiyin 20190410 start
-#ifdef CONFIG_MTK_DUAL_CHARGER_SUPPORT
-		ret = device_create_file(&(pdev->dev), &dev_attr_chg2_exist);
-		if (ret)
-			goto _out;
-#endif
-//add by mahuiyin 20190410 start
-
-//prize add by sunshuai 2020-0407 start
-#if defined (CONFIG_PRIZE_GIGASET_CHARGE_RESTRICTION)
-			ret = device_create_file(&(pdev->dev), &dev_attr_cmd_charge_disable);
-			if (ret)
-			   goto _out;
-#endif
-//prize add by sunshuai 2020-0407 end
-
-
-//prize added by sunshuai, 5725 Wireless charging type identification 20200805-start
-#if defined (CONFIG_PRIZE_MT5725_SUPPORT_15W)
-			ret = device_create_file(&(pdev->dev), &dev_attr_wireless_status);
-				if (ret)
-				   goto _out;
-#endif
-//prize added by sunshuai, 5725 Wireless charging type identification 20200805-end
-
-
-	proc_create_data("current_cmd", 0644, battery_dir,
+	proc_create_data("current_cmd", 0640, battery_dir,
 			&mtk_chg_current_cmd_fops, info);
-	proc_create_data("en_power_path", 0644, battery_dir,
+	proc_create_data("en_power_path", 0640, battery_dir,
 			&mtk_chg_en_power_path_fops, info);
-	proc_create_data("en_safety_timer", 0644, battery_dir,
+	proc_create_data("en_safety_timer", 0640, battery_dir,
 			&mtk_chg_en_safety_timer_fops, info);
 
 _out:
@@ -3467,7 +3306,7 @@ void notify_adapter_event(enum adapter_type type, enum adapter_event evt,
 	switch (type) {
 	case MTK_PD_ADAPTER:
 		switch (evt) {
-		case  MTK_PD_CONNECT_NONE:
+		case MTK_PD_CONNECT_NONE:
 			mutex_lock(&pinfo->charger_pd_lock);
 			chr_err("PD Notify Detach\n");
 			pinfo->pd_type = MTK_PD_CONNECT_NONE;
@@ -3541,11 +3380,6 @@ void notify_adapter_event(enum adapter_type type, enum adapter_event evt,
 			break;
 		};
 	}
-#ifdef CONFIG_MTK_PUMP_EXPRESS_PLUS_50_SUPPORT
-/*prize-huangjiwu-20200730, add for rt9759 pe50 start*/
-	mtk_pe50_notifier_call(pinfo, MTK_PE50_NOTISRC_TCP, evt, val);
-/*prize-huangjiwu-20200730, add for rt9759 pe50 end*/
-#endif
 }
 
 static int proc_dump_log_show(struct seq_file *m, void *v)
@@ -3617,79 +3451,503 @@ void charger_debug_init(void)
 		return;
 	}
 
-	proc_create("dump_log", 0644,
+	proc_create("dump_log", 0640,
 		charger_dir, &charger_dump_log_proc_fops);
 }
 
-
-//prize-add by sunshuai for Bright screen current limit  20181130 start 
-#if defined(CONFIG_PRIZE_CHARGE_CTRL_POLICY)
-static int charge_fb_notifier_callback(struct notifier_block *self, unsigned long event, void *data)
+void scd_ctrl_cmd_from_user(void *nl_data, struct sc_nl_msg_t *ret_msg)
 {
-	struct fb_event *evdata = NULL;
-	int blank;
-	//int err = 0;
-	evdata = data;
-	/* If we aren't interested in this event, skip it immediately ... */
-	if (event != FB_EVENT_BLANK)
-		return 0;
+	struct sc_nl_msg_t *msg;
 
-	blank = *(int *)evdata->data;
-	switch (blank) {
-		case FB_BLANK_UNBLANK:
-			g_charge_is_screen_on = 1;
-			break;
-		case FB_BLANK_POWERDOWN:
-			g_charge_is_screen_on = 0;
-			break;
-		default:
-			break;
+	msg = nl_data;
+	ret_msg->sc_cmd = msg->sc_cmd;
+
+	switch (msg->sc_cmd) {
+
+	case SC_DAEMON_CMD_PRINT_LOG:
+		{
+			chr_err("%s", &msg->sc_data[0]);
+		}
+	break;
+
+	case SC_DAEMON_CMD_SET_DAEMON_PID:
+		{
+			memcpy(&pinfo->sc.g_scd_pid, &msg->sc_data[0],
+				sizeof(pinfo->sc.g_scd_pid));
+			chr_err("[fr] SC_DAEMON_CMD_SET_DAEMON_PID = %d(first launch)\n",
+				pinfo->sc.g_scd_pid);
+		}
+	break;
+
+	case SC_DAEMON_CMD_SETTING:
+		{
+			struct scd_cmd_param_t_1 data;
+
+			memcpy(&data, &msg->sc_data[0],
+				sizeof(struct scd_cmd_param_t_1));
+
+			chr_debug("rcv data:%d %d %d %d %d %d %d %d %d %d %d %d %d %d Ans:%d\n",
+				data.data[0],
+				data.data[1],
+				data.data[2],
+				data.data[3],
+				data.data[4],
+				data.data[5],
+				data.data[6],
+				data.data[7],
+				data.data[8],
+				data.data[9],
+				data.data[10],
+				data.data[11],
+				data.data[12],
+				data.data[13],
+				data.data[14]);
+
+			pinfo->sc.solution = data.data[SC_SOLUTION];
+			if (data.data[SC_SOLUTION] == SC_DISABLE)
+				pinfo->sc.disable_charger = true;
+			else if (data.data[SC_SOLUTION] == SC_REDUCE)
+				pinfo->sc.disable_charger = false;
+			else
+				pinfo->sc.disable_charger = false;
+		}
+	break;
+	default:
+		chr_err("bad sc_DAEMON_CTRL_CMD_FROM_USER 0x%x\n", msg->sc_cmd);
+		break;
 	}
-	chr_err("%s: g_charge_is_screen_on[%d]\n", __func__,g_charge_is_screen_on);
-	return 0;
+
 }
-static struct notifier_block charge_fb_notifier = {
-	.notifier_call = charge_fb_notifier_callback,
-};
-#endif
-//prize-add by sunshuai for Bright screen current limit  20181130 end 
 
+static void sc_nl_send_to_user(u32 pid, int seq, struct sc_nl_msg_t *reply_msg)
+{
+	struct sk_buff *skb;
+	struct nlmsghdr *nlh;
+	/* int size=sizeof(struct fgd_nl_msg_t); */
+	int size = reply_msg->sc_data_len + SCD_NL_MSG_T_HDR_LEN;
+	int len = NLMSG_SPACE(size);
+	void *data;
+	int ret;
 
-//start add by sunshuai 2019-04-03 for charge  current  show
-#if defined(CONFIG_MT6370_PMU_CHARGER)
-extern int mt6370_get_ibat(struct charger_device *chg_dev, u32 *ibat);
+	reply_msg->identity = SCD_NL_MAGIC;
 
-int get_6370_ibat_interface(void){
-   int ibus =0;
-   int ibat =0;
-   
-   if(pinfo->thermal.sm == BAT_TEMP_LOW || pinfo->thermal.sm == BAT_TEMP_HIGH)//add by sunshuai 2019-04-04 for charge  current  show
-	   return ibat;
+	if (in_interrupt())
+		skb = alloc_skb(len, GFP_ATOMIC);
+	else
+		skb = alloc_skb(len, GFP_KERNEL);
 
-   if((pinfo->chg1_dev != NULL) && (pinfo->thermal.sm == BAT_TEMP_NORMAL)){
-   	 ibat=mt6370_get_ibat(pinfo->chg1_dev,&ibus);
-	 if(ibat ==0)
-	 	ibat = ibus;
-   }else{
-     printk("get_6370_ibat_interface  pinfo->chg1_dev no init \n");
-   }
-   
-   return ibat;
+	if (!skb)
+		return;
+
+	nlh = nlmsg_put(skb, pid, seq, 0, size, 0);
+	data = NLMSG_DATA(nlh);
+	memcpy(data, reply_msg, size);
+	NETLINK_CB(skb).portid = 0;	/* from kernel */
+	NETLINK_CB(skb).dst_group = 0;	/* unicast */
+
+	ret = netlink_unicast(pinfo->sc.daemo_nl_sk, skb, pid, MSG_DONTWAIT);
+	if (ret < 0) {
+		chr_err("[Netlink] sc send failed %d\n", ret);
+		return;
+	}
+
 }
-EXPORT_SYMBOL(get_6370_ibat_interface);
-#endif
-//end add by sunshuai 2019-04-03 for charge  current  show
 
 
+static void chg_nl_data_handler(struct sk_buff *skb)
+{
+	u32 pid;
+	kuid_t uid;
+	int seq;
+	void *data;
+	struct nlmsghdr *nlh;
+	struct sc_nl_msg_t *sc_msg, *sc_ret_msg;
+	int size = 0;
 
+	nlh = (struct nlmsghdr *)skb->data;
+	pid = NETLINK_CREDS(skb)->pid;
+	uid = NETLINK_CREDS(skb)->uid;
+	seq = nlh->nlmsg_seq;
+
+	data = NLMSG_DATA(nlh);
+
+	sc_msg = (struct sc_nl_msg_t *)data;
+
+	size = sc_msg->sc_ret_data_len + SCD_NL_MSG_T_HDR_LEN;
+
+	if (size > (PAGE_SIZE << 1))
+		sc_ret_msg = vmalloc(size);
+	else {
+		if (in_interrupt())
+			sc_ret_msg = kmalloc(size, GFP_ATOMIC);
+	else
+		sc_ret_msg = kmalloc(size, GFP_KERNEL);
+	}
+
+	if (sc_ret_msg == NULL) {
+		if (size > PAGE_SIZE)
+			sc_ret_msg = vmalloc(size);
+
+		if (sc_ret_msg == NULL)
+			return;
+	}
+
+	memset(sc_ret_msg, 0, size);
+
+	scd_ctrl_cmd_from_user(data, sc_ret_msg);
+	sc_nl_send_to_user(pid, seq, sc_ret_msg);
+
+	kvfree(sc_ret_msg);
+}
+
+void sc_select_charging_current(struct charger_manager *info, struct charger_data *pdata)
+{
+	chr_err("sck: en:%d pid:%d %d %d %d %d %d\n",
+			info->sc.enable,
+			info->sc.g_scd_pid,
+			info->sc.pre_ibat,
+			info->sc.sc_ibat,
+			pdata->charging_current_limit,
+			pdata->thermal_charging_current_limit,
+			info->sc.solution);
+
+
+	if (pinfo->sc.g_scd_pid != 0 && pinfo->sc.disable_in_this_plug == false) {
+		if (info->sc.pre_ibat == -1 || info->sc.solution == SC_IGNORE
+			|| info->sc.solution == SC_DISABLE) {
+			info->sc.sc_ibat = -1;
+		} else {
+			if (info->sc.pre_ibat == pdata->charging_current_limit
+				&& info->sc.solution == SC_REDUCE
+				&& ((pdata->charging_current_limit - 100000) >= 500000)) {
+				if (info->sc.sc_ibat == -1)
+					info->sc.sc_ibat = pdata->charging_current_limit - 100000;
+				else if (info->sc.sc_ibat - 100000 >= 500000)
+					info->sc.sc_ibat = info->sc.sc_ibat - 100000;
+			}
+		}
+	}
+	info->sc.pre_ibat =  pdata->charging_current_limit;
+
+	if (pdata->thermal_charging_current_limit != -1) {
+		if (pdata->thermal_charging_current_limit <
+		    pdata->charging_current_limit)
+			pdata->charging_current_limit =
+					pdata->thermal_charging_current_limit;
+		pinfo->sc.disable_in_this_plug = true;
+	} else if ((info->sc.solution == SC_REDUCE || info->sc.solution == SC_KEEP)
+		&& info->sc.sc_ibat <
+		pdata->charging_current_limit && pinfo->sc.g_scd_pid != 0 &&
+		pinfo->sc.disable_in_this_plug == false) {
+		pdata->charging_current_limit = info->sc.sc_ibat;
+	}
+
+
+}
+
+void sc_init(struct smartcharging *sc)
+{
+	sc->enable = false;
+	sc->battery_size = 3000;
+	sc->start_time = 0;
+	sc->end_time = 80000;
+	sc->current_limit = 2000;
+	sc->target_percentage = 80;
+	sc->left_time_for_cv = 3600;
+	sc->pre_ibat = -1;
+}
+
+void sc_update(struct charger_manager *pinfo)
+{
+	memset(&pinfo->sc.data, 0, sizeof(struct scd_cmd_param_t_1));
+	pinfo->sc.data.data[SC_VBAT] = battery_get_bat_voltage();
+	pinfo->sc.data.data[SC_BAT_TMP] = battery_get_bat_temperature();
+	pinfo->sc.data.data[SC_UISOC] = battery_get_uisoc();
+	pinfo->sc.data.data[SC_SOC] = battery_get_soc();
+
+	pinfo->sc.data.data[SC_ENABLE] = pinfo->sc.enable;
+	pinfo->sc.data.data[SC_BAT_SIZE] = pinfo->sc.battery_size;
+	pinfo->sc.data.data[SC_START_TIME] = pinfo->sc.start_time;
+	pinfo->sc.data.data[SC_END_TIME] = pinfo->sc.end_time;
+	pinfo->sc.data.data[SC_IBAT_LIMIT] = pinfo->sc.current_limit;
+	pinfo->sc.data.data[SC_TARGET_PERCENTAGE] = pinfo->sc.target_percentage;
+	pinfo->sc.data.data[SC_LEFT_TIME_FOR_CV] = pinfo->sc.left_time_for_cv;
+
+	charger_dev_get_charging_current(pinfo->chg1_dev, &pinfo->sc.data.data[SC_IBAT_SETTING]);
+	pinfo->sc.data.data[SC_IBAT_SETTING] = pinfo->sc.data.data[SC_IBAT_SETTING] / 1000;
+	pinfo->sc.data.data[SC_IBAT] = battery_get_bat_current() / 10;
+	charger_dev_get_ibus(pinfo->chg1_dev, &pinfo->sc.data.data[SC_IBUS]);
+	if (chargerlog_level == 1)
+		pinfo->sc.data.data[SC_DBGLV] = 3;
+	else
+		pinfo->sc.data.data[SC_DBGLV] = 7;
+
+}
+
+int wakeup_sc_algo_cmd(struct scd_cmd_param_t_1 *data, int subcmd, int para1)
+{
+
+	if (pinfo->sc.g_scd_pid != 0) {
+		struct sc_nl_msg_t *sc_msg;
+		int size = SCD_NL_MSG_T_HDR_LEN + sizeof(struct scd_cmd_param_t_1);
+
+		if (size > (PAGE_SIZE << 1))
+			sc_msg = vmalloc(size);
+		else {
+			if (in_interrupt())
+				sc_msg = kmalloc(size, GFP_ATOMIC);
+		else
+			sc_msg = kmalloc(size, GFP_KERNEL);
+
+		}
+
+		if (sc_msg == NULL) {
+			if (size > PAGE_SIZE)
+				sc_msg = vmalloc(size);
+
+			if (sc_msg == NULL)
+				return -1;
+		}
+
+		sc_update(pinfo);
+
+		chr_debug(
+			"[wakeup_fg_algo] malloc size=%d pid=%d\n",
+			size, pinfo->sc.g_scd_pid);
+		memset(sc_msg, 0, size);
+		sc_msg->sc_cmd = SC_DAEMON_CMD_NOTIFY_DAEMON;
+		sc_msg->sc_subcmd = subcmd;
+		sc_msg->sc_subcmd_para1 = para1;
+		memcpy(sc_msg->sc_data, data, sizeof(struct scd_cmd_param_t_1));
+		sc_msg->sc_data_len += sizeof(struct scd_cmd_param_t_1);
+		sc_nl_send_to_user(pinfo->sc.g_scd_pid, 0, sc_msg);
+
+		kvfree(sc_msg);
+
+		return 0;
+	}
+	chr_debug("pid is NULL\n");
+	return -1;
+}
+
+static ssize_t show_sc_en(
+	struct device *dev, struct device_attribute *attr,
+					char *buf)
+{
+
+	chr_err(
+	"[enable smartcharging] : %d\n",
+	pinfo->sc.enable);
+
+	return sprintf(buf, "%d\n", pinfo->sc.enable);
+}
+
+static ssize_t store_sc_en(
+	struct device *dev, struct device_attribute *attr,
+					 const char *buf, size_t size)
+{
+	unsigned long val = 0;
+	int ret;
+
+	if (buf != NULL && size != 0) {
+		chr_err("[enable smartcharging] buf is %s\n", buf);
+		ret = kstrtoul(buf, 10, &val);
+		if (val < 0) {
+			chr_err(
+				"[enable smartcharging] val is %d ??\n",
+				(int)val);
+			val = 0;
+		}
+
+		if (val == 0)
+			pinfo->sc.enable = false;
+		else
+			pinfo->sc.enable = true;
+
+		chr_err(
+			"[enable smartcharging]enable smartcharging=%d\n",
+			pinfo->sc.enable);
+	}
+	return size;
+}
+static DEVICE_ATTR(enable_sc, 0664,
+	show_sc_en, store_sc_en);
+
+static ssize_t show_sc_stime(
+	struct device *dev, struct device_attribute *attr,
+					char *buf)
+{
+
+	chr_err(
+	"[smartcharging stime] : %d\n",
+	pinfo->sc.start_time);
+
+	return sprintf(buf, "%d\n", pinfo->sc.start_time);
+}
+
+static ssize_t store_sc_stime(
+	struct device *dev, struct device_attribute *attr,
+					 const char *buf, size_t size)
+{
+	unsigned long val = 0;
+	int ret;
+
+	if (buf != NULL && size != 0) {
+		chr_err("[smartcharging stime] buf is %s\n", buf);
+		ret = kstrtoul(buf, 10, &val);
+		if (val < 0) {
+			chr_err(
+				"[smartcharging stime] val is %d ??\n",
+				(int)val);
+			val = 0;
+		}
+
+		if (val >= 0)
+			pinfo->sc.start_time = val;
+
+		chr_err(
+			"[smartcharging stime]enable smartcharging=%d\n",
+			pinfo->sc.start_time);
+	}
+	return size;
+}
+static DEVICE_ATTR(sc_stime, 0664,
+	show_sc_stime, store_sc_stime);
+
+static ssize_t show_sc_etime(
+	struct device *dev, struct device_attribute *attr,
+					char *buf)
+{
+
+	chr_err(
+	"[smartcharging etime] : %d\n",
+	pinfo->sc.end_time);
+
+	return sprintf(buf, "%d\n", pinfo->sc.end_time);
+}
+
+static ssize_t store_sc_etime(
+	struct device *dev, struct device_attribute *attr,
+					 const char *buf, size_t size)
+{
+	unsigned long val = 0;
+	int ret;
+
+	if (buf != NULL && size != 0) {
+		chr_err("[smartcharging etime] buf is %s\n", buf);
+		ret = kstrtoul(buf, 10, &val);
+		if (val < 0) {
+			chr_err(
+				"[smartcharging etime] val is %d ??\n",
+				(int)val);
+			val = 0;
+		}
+
+		if (val >= 0)
+			pinfo->sc.end_time = val;
+
+		chr_err(
+			"[smartcharging stime]enable smartcharging=%d\n",
+			pinfo->sc.end_time);
+	}
+	return size;
+}
+static DEVICE_ATTR(sc_etime, 0664,
+	show_sc_etime, store_sc_etime);
+
+static ssize_t show_sc_tuisoc(
+	struct device *dev, struct device_attribute *attr,
+					char *buf)
+{
+
+	chr_err(
+	"[smartcharging target uisoc] : %d\n",
+	pinfo->sc.target_percentage);
+
+	return sprintf(buf, "%d\n", pinfo->sc.target_percentage);
+}
+
+static ssize_t store_sc_tuisoc(
+	struct device *dev, struct device_attribute *attr,
+					 const char *buf, size_t size)
+{
+	unsigned long val = 0;
+	int ret;
+
+	if (buf != NULL && size != 0) {
+		chr_err("[smartcharging tuisoc] buf is %s\n", buf);
+		ret = kstrtoul(buf, 10, &val);
+		if (val < 0) {
+			chr_err(
+				"[smartcharging tuisoc] val is %d ??\n",
+				(int)val);
+			val = 0;
+		}
+
+		if (val >= 0)
+			pinfo->sc.target_percentage = val;
+
+		chr_err(
+			"[smartcharging stime]tuisoc=%d\n",
+			pinfo->sc.target_percentage);
+	}
+	return size;
+}
+static DEVICE_ATTR(sc_tuisoc, 0664,
+	show_sc_tuisoc, store_sc_tuisoc);
+
+static ssize_t show_sc_ibat_limit(
+	struct device *dev, struct device_attribute *attr,
+					char *buf)
+{
+
+	chr_err(
+	"[smartcharging ibat limit] : %d\n",
+	pinfo->sc.current_limit);
+
+	return sprintf(buf, "%d\n", pinfo->sc.current_limit);
+}
+
+static ssize_t store_sc_ibat_limit(
+	struct device *dev, struct device_attribute *attr,
+					 const char *buf, size_t size)
+{
+	unsigned long val = 0;
+	int ret;
+
+	if (buf != NULL && size != 0) {
+		chr_err("[smartcharging ibat limit] buf is %s\n", buf);
+		ret = kstrtoul(buf, 10, &val);
+		if (val < 0) {
+			chr_err(
+				"[smartcharging ibat limit] val is %d ??\n",
+				(int)val);
+			val = 0;
+		}
+
+		if (val >= 0)
+			pinfo->sc.current_limit = val;
+
+		chr_err(
+			"[smartcharging ibat limit]=%d\n",
+			pinfo->sc.current_limit);
+	}
+	return size;
+}
+static DEVICE_ATTR(sc_ibat_limit, 0664,
+	show_sc_ibat_limit, store_sc_ibat_limit);
 
 static int mtk_charger_probe(struct platform_device *pdev)
 {
 	struct charger_manager *info = NULL;
-	struct list_head *pos;
+	struct list_head *pos = NULL;
 	struct list_head *phead = &consumer_head;
-	struct charger_consumer *ptr;
+	struct charger_consumer *ptr = NULL;
 	int ret;
+	int ret_device_file;
+	struct netlink_kernel_cfg cfg = {
+		.input = chg_nl_data_handler,
+	};
 
 	chr_err("%s: starts\n", __func__);
 
@@ -3720,14 +3978,9 @@ static int mtk_charger_probe(struct platform_device *pdev)
 	info->chg1_data.input_current_limit_by_aicl = -1;
 	info->chg2_data.thermal_charging_current_limit = -1;
 	info->chg2_data.thermal_input_current_limit = -1;
-#ifdef CONFIG_MTK_PUMP_EXPRESS_PLUS_50_SUPPORT
-/*prize-huangjiwu-20200730, add for rt9759 pe50 start*/
-	info->dvchg1_data.thermal_input_current_limit = -1;
-	info->dvchg2_data.thermal_input_current_limit = -1;
-/*prize-huangjiwu-20200730, add for rt9759 pe50 end*/
-#endif
-	info->sw_jeita.error_recovery_flag = true;
 
+	info->sw_jeita.error_recovery_flag = true;
+	info->is_input_suspend = false;
 	mtk_charger_init_timer(info);
 
 	kthread_run(charger_routine_thread, info, "charger_thread");
@@ -3762,12 +4015,7 @@ static int mtk_charger_probe(struct platform_device *pdev)
 
 	if (mtk_pe40_init(info) == false)
 		info->enable_pe_4 = false;
-#ifdef CONFIG_MTK_PUMP_EXPRESS_PLUS_50_SUPPORT
-/*prize-huangjiwu-20200730, add for rt9759 pe50 start*/
-	if (mtk_pe50_init(info) < 0)
-		info->enable_pe_5 = false;
-/*prize-huangjiwu-20200730, add for rt9759 pe50 end*/
-#endif
+
 	mtk_pdc_init(info);
 	charger_ftm_init();
 	mtk_charger_get_atm_mode(info);
@@ -3777,6 +4025,14 @@ static int mtk_charger_probe(struct platform_device *pdev)
 	info->enable_sw_safety_timer = false;
 	charger_dev_enable_safety_timer(info->chg1_dev, false);
 #endif
+
+	info->sc.daemo_nl_sk = netlink_kernel_create(&init_net, NETLINK_CHG, &cfg);
+
+	if (info->sc.daemo_nl_sk == NULL)
+		chr_err("sc netlink_kernel_create error id:%d\n", NETLINK_CHG);
+	else
+		chr_err("sc_netlink_kernel_create success id:%d\n", NETLINK_CHG);
+	sc_init(&info->sc);
 
 	charger_debug_init();
 
@@ -3790,32 +4046,33 @@ static int mtk_charger_probe(struct platform_device *pdev)
 		}
 	}
 	mutex_unlock(&consumer_mutex);
+
+	/* sysfs node */
+	ret_device_file = device_create_file(&(pdev->dev),
+		&dev_attr_enable_sc);
+	ret_device_file = device_create_file(&(pdev->dev),
+		&dev_attr_sc_stime);
+	ret_device_file = device_create_file(&(pdev->dev),
+		&dev_attr_sc_etime);
+	ret_device_file = device_create_file(&(pdev->dev),
+		&dev_attr_sc_tuisoc);
+	ret_device_file = device_create_file(&(pdev->dev),
+		&dev_attr_sc_ibat_limit);
+
 	info->chg1_consumer =
 		charger_manager_get_by_name(&pdev->dev, "charger_port1");
+	info->usb_psy = power_supply_get_by_name("usb");
+	if (!info->usb_psy) {
+		chr_err("%s: get power supply failed\n", __func__);
+	}
 	info->init_done = true;
 	_wake_up_charger(info);
-
-// start add by sunshuai for Bright screen current limit  20181130
-#if defined(CONFIG_PRIZE_CHARGE_CTRL_POLICY)
-		ret = fb_register_client(&charge_fb_notifier);
-		if (ret)
-			pr_debug("[%s] failed to register charger_fb_notifier_block %d\n", __func__, ret);
-#endif
-// end	add by sunshuai for Bright screen current limit  20181130
-
 
 	return 0;
 }
 
 static int mtk_charger_remove(struct platform_device *dev)
 {
-#ifdef CONFIG_MTK_PUMP_EXPRESS_PLUS_50_SUPPORT
-/*prize-huangjiwu-20200730, add for rt9759 pe50 start*/
-	struct charger_manager *info = platform_get_drvdata(dev);
-
-	mtk_pe50_deinit(info);
-/*prize-huangjiwu-20200730, add for rt9759 pe50 end*/
-#endif
 	return 0;
 }
 

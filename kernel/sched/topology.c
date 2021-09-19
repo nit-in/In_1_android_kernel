@@ -152,9 +152,6 @@ static inline bool sched_debug(void)
 static int sd_degenerate(struct sched_domain *sd)
 {
 	if (cpumask_weight(sched_domain_span(sd)) == 1) {
-		if (sd->groups->sge)
-			sd->flags &= ~SD_LOAD_BALANCE;
-		else
 			return 1;
 	}
 
@@ -202,10 +199,6 @@ sd_parent_degenerate(struct sched_domain *sd, struct sched_domain *parent)
 				SD_PREFER_SIBLING |
 				SD_SHARE_POWERDOMAIN |
 				SD_SHARE_CAP_STATES);
-		if (parent->groups->sge) {
-			parent->flags &= ~SD_LOAD_BALANCE;
-			return 0;
-		}
 		if (nr_node_ids == 1)
 			pflags &= ~SD_SERIALIZE;
 	}
@@ -1283,7 +1276,7 @@ sd_init(struct sched_domain_topology_level *tl,
 		sd_flags = (*tl->sd_flags)();
 	if (WARN_ONCE(sd_flags & ~TOPOLOGY_SD_FLAGS,
 			"wrong sd_flags in topology description\n"))
-		sd_flags &= ~TOPOLOGY_SD_FLAGS;
+		sd_flags &= TOPOLOGY_SD_FLAGS;
 
 	*sd = (struct sched_domain){
 		.min_interval		= sd_weight,
@@ -1534,7 +1527,7 @@ void sched_init_numa(void)
 	int level = 0;
 	int i, j, k;
 
-	sched_domains_numa_distance = kzalloc(sizeof(int) * nr_node_ids, GFP_KERNEL);
+	sched_domains_numa_distance = kzalloc(sizeof(int) * (nr_node_ids + 1), GFP_KERNEL);
 	if (!sched_domains_numa_distance)
 		return;
 

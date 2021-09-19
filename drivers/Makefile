@@ -184,10 +184,6 @@ obj-$(CONFIG_FSI)		+= fsi/
 obj-$(CONFIG_TEE)		+= tee/
 obj-$(CONFIG_MULTIPLEXER)	+= mux/
 obj-$(CONFIG_TRUSTY)	+= trusty/
-# prize liaoxingen 20200817, for project config-start
-ifneq ($(CONFIG_PROJECT_KOOBEE), "")
-project_koobee := $(subst ",,$(CONFIG_PROJECT_KOOBEE))
-project_koobee := $(shell echo $(project_koobee) | tr '[a-z]' '[A-Z]')
-KBUILD_CFLAGS += -DCONFIG_PROJECT_KOOBEE_$(project_koobee)
-endif
-# prize liaoxingen 20200817, for project config-end
+obj-$(CONFIG_GNSS)		+= gnss/
+obj-$(CONFIG_SWITCH)            += switch/
+obj-$(CONFIG_NXP_P73_DEVICES) += p73-spi/

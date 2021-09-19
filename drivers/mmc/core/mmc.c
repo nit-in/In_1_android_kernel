@@ -316,7 +316,7 @@ static void mmc_manage_enhanced_area(struct mmc_card *card, u8 *ext_csd)
 	}
 }
 
-static void mmc_part_add(struct mmc_card *card, unsigned int size,
+static void mmc_part_add(struct mmc_card *card, u64 size,
 			 unsigned int part_cfg, char *name, int idx, bool ro,
 			 int area_type)
 {
@@ -332,7 +332,7 @@ static void mmc_manage_gp_partitions(struct mmc_card *card, u8 *ext_csd)
 {
 	int idx;
 	u8 hc_erase_grp_sz, hc_wp_grp_sz;
-	unsigned int part_size;
+	u64 part_size;
 
 	/*
 	 * General purpose partition feature support --
@@ -362,8 +362,7 @@ static void mmc_manage_gp_partitions(struct mmc_card *card, u8 *ext_csd)
 				(ext_csd[EXT_CSD_GP_SIZE_MULT + idx * 3 + 1]
 				<< 8) +
 				ext_csd[EXT_CSD_GP_SIZE_MULT + idx * 3];
-			part_size *= (size_t)(hc_erase_grp_sz *
-				hc_wp_grp_sz);
+			part_size *= (hc_erase_grp_sz * hc_wp_grp_sz);
 			mmc_part_add(card, part_size << 19,
 				EXT_CSD_PART_CONFIG_ACC_GP0 + idx,
 				"gp%d", idx, false,
@@ -381,7 +380,7 @@ static void mmc_manage_gp_partitions(struct mmc_card *card, u8 *ext_csd)
 static int mmc_decode_ext_csd(struct mmc_card *card, u8 *ext_csd)
 {
 	int err = 0, idx;
-	unsigned int part_size;
+	u64 part_size;
 	struct device_node *np;
 	bool broken_hpi = false;
 
@@ -443,14 +442,7 @@ static int mmc_decode_ext_csd(struct mmc_card *card, u8 *ext_csd)
 		card->ext_csd.part_config = ext_csd[EXT_CSD_PART_CONFIG];
 
 		/* EXT_CSD value is in units of 10ms, but we store in ms */
-		/* Add extra 4 times for some timeout cases */
-		card->ext_csd.part_time =
-			40 * ext_csd[EXT_CSD_PART_SWITCH_TIME];
-
-		/* Some eMMC set the value too low so set a minimum */
-		if (card->ext_csd.part_time &&
-		    card->ext_csd.part_time < MMC_MIN_PART_SWITCH_TIME)
-			card->ext_csd.part_time = MMC_MIN_PART_SWITCH_TIME;
+		card->ext_csd.part_time = 10 * ext_csd[EXT_CSD_PART_SWITCH_TIME];
 
 		/* Sleep / awake timeout in 100ns units */
 		if (sa_shift > 0 && sa_shift <= 0x17)
@@ -475,7 +467,8 @@ static int mmc_decode_ext_csd(struct mmc_card *card, u8 *ext_csd)
 		 * There are two boot regions of equal size, defined in
 		 * multiples of 128K.
 		 */
-		if (ext_csd[EXT_CSD_BOOT_MULT] &&
+		if (!(card->host->caps2 & MMC_CAP2_NMCARD) &&
+				ext_csd[EXT_CSD_BOOT_MULT] &&
 				mmc_boot_partition_access(card->host)) {
 			for (idx = 0; idx < MMC_NUM_BOOT_PARTITION; idx++) {
 				part_size = ext_csd[EXT_CSD_BOOT_MULT] << 17;
@@ -597,7 +590,9 @@ static int mmc_decode_ext_csd(struct mmc_card *card, u8 *ext_csd)
 		 * RPMB regions are defined in multiples of 128K.
 		 */
 		card->ext_csd.raw_rpmb_size_mult = ext_csd[EXT_CSD_RPMB_MULT];
-		if (ext_csd[EXT_CSD_RPMB_MULT] && mmc_host_cmd23(card->host)) {
+		if (!(card->host->caps2 & MMC_CAP2_NMCARD) &&
+				ext_csd[EXT_CSD_RPMB_MULT] &&
+				mmc_host_cmd23(card->host)) {
 			mmc_part_add(card, ext_csd[EXT_CSD_RPMB_MULT] << 17,
 				EXT_CSD_PART_CONFIG_ACC_RPMB,
 				"rpmb", 0, false,
@@ -649,8 +644,20 @@ static int mmc_decode_ext_csd(struct mmc_card *card, u8 *ext_csd)
 		card->ext_csd.data_sector_size = 512;
 	}
 
+	/*
+	 * GENERIC_CMD6_TIME is to be used "unless a specific timeout is defined
+	 * when accessing a specific field", so use it here if there is no
+	 * PARTITION_SWITCH_TIME.
+	 */
+	if (!card->ext_csd.part_time)
+		card->ext_csd.part_time = card->ext_csd.generic_cmd6_time;
+	/* Some eMMC set the value too low so set a minimum */
+	if (card->ext_csd.part_time < MMC_MIN_PART_SWITCH_TIME)
+		card->ext_csd.part_time = MMC_MIN_PART_SWITCH_TIME;
+
 	/* eMMC v5 or later */
-	if (card->ext_csd.rev >= 7) {
+	if (!(card->host->caps2 & MMC_CAP2_NMCARD) &&
+			(card->ext_csd.rev >= 7)) {
 		if ((ext_csd[EXT_CSD_BKOPS_SUPPORT] & 0x1) &&
 		    !card->ext_csd.man_bkops_en) {
 			card->ext_csd.auto_bkops = 1;
@@ -677,7 +684,8 @@ static int mmc_decode_ext_csd(struct mmc_card *card, u8 *ext_csd)
 
 #if defined(CONFIG_MTK_EMMC_CQ_SUPPORT) || defined(CONFIG_MTK_EMMC_HW_CQ)
 	/* eMMC v5.1 or later */
-	if (card->ext_csd.rev >= 8) {
+	if (!(card->host->caps2 & MMC_CAP2_NMCARD) &&
+			card->ext_csd.rev >= 8) {
 		card->ext_csd.cmdq_support = ext_csd[EXT_CSD_CMDQ_SUPPORT] &
 					     EXT_CSD_CMDQ_SUPPORTED;
 		card->ext_csd.cmdq_depth = (ext_csd[EXT_CSD_CMDQ_DEPTH] &
@@ -1181,7 +1189,9 @@ static int mmc_select_hs_ddr(struct mmc_card *card)
 			return 0;
 	}
 
-	if (card->mmc_avail_type & EXT_CSD_CARD_TYPE_DDR_1_8V &&
+	if (host->caps2 & MMC_CAP2_NMCARD)
+		err = 0;
+	else if (card->mmc_avail_type & EXT_CSD_CARD_TYPE_DDR_1_8V &&
 	    host->caps & MMC_CAP_1_8V_DDR)
 		err = mmc_set_signal_voltage(host, MMC_SIGNAL_VOLTAGE_180);
 
@@ -1467,7 +1477,9 @@ static int mmc_select_hs200(struct mmc_card *card)
 	if (card->mmc_avail_type & EXT_CSD_CARD_TYPE_HS200_1_2V)
 		err = mmc_set_signal_voltage(host, MMC_SIGNAL_VOLTAGE_120);
 
-	if (err && card->mmc_avail_type & EXT_CSD_CARD_TYPE_HS200_1_8V)
+	if (host->caps2 & MMC_CAP2_NMCARD)
+		err = 0;
+	else if (err && card->mmc_avail_type & EXT_CSD_CARD_TYPE_HS200_1_8V)
 		err = mmc_set_signal_voltage(host, MMC_SIGNAL_VOLTAGE_180);
 
 	/* If fails try again during next card power cycle */

@@ -10,8 +10,6 @@
  * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
  * See http://www.gnu.org/licenses/gpl-2.0.html for more details.
  */
-#ifdef CONFIG_MTK_PUMP_EXPRESS_PLUS_50_SUPPORT
-/*prize-huangjiwu-20200730, add for rt9759 pe50 start*/
 
 #ifndef __MTK_PE_50_INTF_H
 #define __MTK_PE_50_INTF_H
@@ -31,7 +29,7 @@ enum mtk_pe50_notify_src {
 	MTK_PE50_NOTISRC_MAX,
 };
 
-#ifdef CONFIG_MTK_PUMP_EXPRESS_PLUS_50_SUPPORT
+#ifdef CONFIG_MTK_PUMP_EXPRESS_50_SUPPORT
 extern int mtk_pe50_init(struct charger_manager *chgmgr);
 extern bool mtk_pe50_is_ready(struct charger_manager *chgmgr);
 extern int mtk_pe50_start(struct charger_manager *chgmgr);
@@ -53,9 +51,9 @@ static inline int mtk_pe50_init(struct charger_manager *chgmgr)
 	return -ENOTSUPP;
 }
 
-static inline int mtk_pe50_is_ready(struct charger_manager *chgmgr)
+static inline bool mtk_pe50_is_ready(struct charger_manager *chgmgr)
 {
-	return -ENOTSUPP;
+	return false;
 }
 
 static inline int mtk_pe50_start(struct charger_manager *chgmgr)
@@ -75,12 +73,12 @@ static inline int mtk_pe50_plugout_reset(struct charger_manager *chgmgr)
 
 static inline bool mtk_pe50_get_is_connect(struct charger_manager *chgmgr)
 {
-	return -ENOTSUPP;
+	return false;
 }
 
 static inline bool mtk_pe50_get_is_enable(struct charger_manager *chgmgr)
 {
-	return -ENOTSUPP;
+	return false;
 }
 
 static inline void mtk_pe50_set_is_enable(struct charger_manager *chgmgr,
@@ -116,7 +114,5 @@ static inline int mtk_pe50_stop_algo(struct charger_manager *chgmgr, bool rerun)
 {
 	return -ENOTSUPP;
 }
-#endif /* CONFIG_MTK_PUMP_EXPRESS_PLUS_50_SUPPORT */
+#endif /* CONFIG_MTK_PUMP_EXPRESS_50_SUPPORT */
 #endif /* __MTK_PE_50_INTF_H */
-/*prize-huangjiwu-20200730, add for rt9759 pe50 end*/
-#endif

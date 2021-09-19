@@ -1,6 +1,7 @@
 /* SCP sensor hub driver
  *
  * Copyright (C) 2016 MediaTek Inc.
+ * Copyright (C) 2021 XiaoMi, Inc.
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License version 2 as
@@ -57,41 +58,14 @@
  * 44 BYTES DATA_UNIT_T, THERE ARE 4 BYTES HEADER IN SCP_SENSOR_HUB_DATA
  * HEAD
  */
-/* begin, prize-lifenfen-20181126, add for sensorhub hardware info */
-/*
-note, the new struct scp_sensor_hub_get_sensor_hardware_info is 68 byte.
-struct SCP_SENSOR_HUB_SET_CUST_REQ/SCP_SENSOR_HUB_SET_CUST_RSP union uint32_t custData[11] is 44 byte.
-union custData is more clear to calculate IPI total size which is used by offsetof...it's better to change to custData[17].
-*/
-#ifdef CONFIG_SENSORHUB_PRIZE_HARDWARE_INFO
-#ifdef CONFIG_SENSORHUB_PRIZE_HARDWARE_INFO_SIZE
-#define SENSOR_IPI_SIZE 72
-#else
 #define SENSOR_IPI_SIZE 48
-#endif
-#else
-#define SENSOR_IPI_SIZE 48
-#endif
-/* end, prize-lifenfen-20181126, add for sensorhub hardware info */
-
 /*
  * experience number for delay_count per DELAY_COUNT sensor input delay 10ms
  * msleep(10) system will schedule to hal process then read input node
  */
 #define SENSOR_IPI_HEADER_SIZE 4
 #define SENSOR_IPI_PACKET_SIZE (SENSOR_IPI_SIZE - SENSOR_IPI_HEADER_SIZE)
-
-/* begin, prize-lifenfen-20181126, add for sensorhub hardware info */
-#ifdef CONFIG_SENSORHUB_PRIZE_HARDWARE_INFO
-#ifdef CONFIG_SENSORHUB_PRIZE_HARDWARE_INFO_SIZE
-#define SENSOR_DATA_SIZE 68
-#else
 #define SENSOR_DATA_SIZE 44
-#endif
-#else
-#define SENSOR_DATA_SIZE 44
-#endif
-/* end, prize-lifenfen-20181126, add for sensorhub hardware info */
 
 #if SENSOR_DATA_SIZE > SENSOR_IPI_PACKET_SIZE
 #error "SENSOR_DATA_SIZE > SENSOR_IPI_PACKET_SIZE, out of memory"
@@ -889,13 +863,13 @@ static void SCP_sensorHub_init_sensor_state(void)
 
 	mSensorState[SENSOR_TYPE_PICK_UP_GESTURE].sensorType =
 		SENSOR_TYPE_PICK_UP_GESTURE;
-	mSensorState[SENSOR_TYPE_PICK_UP_GESTURE].rate = SENSOR_RATE_ONESHOT;
+	mSensorState[SENSOR_TYPE_PICK_UP_GESTURE].rate = SENSOR_RATE_ONCHANGE;
 	mSensorState[SENSOR_TYPE_PICK_UP_GESTURE].timestamp_filter = false;
 
-	mSensorState[SENSOR_TYPE_WAKE_GESTURE].sensorType =
-		SENSOR_TYPE_WAKE_GESTURE;
-	mSensorState[SENSOR_TYPE_WAKE_GESTURE].rate = SENSOR_RATE_ONESHOT;
-	mSensorState[SENSOR_TYPE_WAKE_GESTURE].timestamp_filter = false;
+	//mSensorState[SENSOR_TYPE_WAKE_GESTURE].sensorType =
+	//	SENSOR_TYPE_WAKE_GESTURE;
+	//mSensorState[SENSOR_TYPE_WAKE_GESTURE].rate = SENSOR_RATE_ONESHOT;
+	//mSensorState[SENSOR_TYPE_WAKE_GESTURE].timestamp_filter = false;
 
 	mSensorState[SENSOR_TYPE_ANSWER_CALL].sensorType =
 		SENSOR_TYPE_ANSWER_CALL;
@@ -1153,6 +1127,7 @@ static int SCP_sensorHub_server_dispatch_data(uint32_t *currWp)
 
 	int64_t scp_time = 0;
 
+	memset(&event, 0, sizeof(struct data_unit_t));
 	pStart = (char *)READ_ONCE(obj->SCP_sensorFIFO) +
 		offsetof(struct sensorFIFO, data);
 	pEnd = pStart +  READ_ONCE(obj->SCP_sensorFIFO->FIFOSize);
@@ -1841,16 +1816,6 @@ int sensor_set_cmd_to_hub(uint8_t sensorType,
 			len = offsetof(struct SCP_SENSOR_HUB_SET_CUST_REQ,
 				custData) + sizeof(req.set_cust_req.getInfo);
 			break;
-		/* begin, prize-lifenfen-20181126, add for sensorhub hardware info */
-		#ifdef CONFIG_SENSORHUB_PRIZE_HARDWARE_INFO
-		case CUST_ACTION_GET_PRIZE_HARDWARE_INFO:
-			req.set_cust_req.gethardwareInfo.action =
-				CUST_ACTION_GET_PRIZE_HARDWARE_INFO;
-			len = offsetof(struct SCP_SENSOR_HUB_SET_CUST_REQ, custData)
-				+ sizeof(req.set_cust_req.gethardwareInfo);
-			break;
-		#endif
-		/* end, prize-lifenfen-20181126, add for sensorhub hardware info */
 		default:
 			return -1;
 		}
@@ -1902,20 +1867,20 @@ int sensor_set_cmd_to_hub(uint8_t sensorType,
 			len = offsetof(struct SCP_SENSOR_HUB_SET_CUST_REQ,
 				custData) + sizeof(req.set_cust_req.getInfo);
 			break;
-		/* begin, prize-lifenfen-20181126, add for sensorhub hardware info */
-		#ifdef CONFIG_SENSORHUB_PRIZE_HARDWARE_INFO
-		case CUST_ACTION_GET_PRIZE_HARDWARE_INFO:
-			req.set_cust_req.gethardwareInfo.action =
-				CUST_ACTION_GET_PRIZE_HARDWARE_INFO;
-			len = offsetof(struct SCP_SENSOR_HUB_SET_CUST_REQ, custData)
-				+ sizeof(req.set_cust_req.gethardwareInfo);
-			break;
-		#endif
-		/* end, prize-lifenfen-20181126, add for sensorhub hardware info */
-		default:
-			return -1;
-		}
-		break;
+
+    // new add for lcm info
+    case CUST_ACTION_LCM_INFO:
+    req.set_cust_req.lcm_info.action = CUST_ACTION_LCM_INFO;
+    req.set_cust_req.lcm_info.lcm_info = (*(int *)data);
+    printk("zch req.set_cust_req.lcm_info.lcm_info = %d\n", req.set_cust_req.lcm_info.lcm_info);
+    len = offsetof(struct SCP_SENSOR_HUB_SET_CUST_REQ,
+    custData) + sizeof(req.set_cust_req.lcm_info);
+    break;
+
+    default:
+    return -1;
+    }
+    break;
 	case ID_PROXIMITY:
 		req.set_cust_req.sensorType = ID_PROXIMITY;
 		req.set_cust_req.action = SENSOR_HUB_SET_CUST;
@@ -1986,16 +1951,23 @@ int sensor_set_cmd_to_hub(uint8_t sensorType,
 			len = offsetof(struct SCP_SENSOR_HUB_SET_CUST_REQ,
 				custData) + sizeof(req.set_cust_req.getInfo);
 			break;
-		/* begin, prize-lifenfen-20181126, add for sensorhub hardware info */
-		#ifdef CONFIG_SENSORHUB_PRIZE_HARDWARE_INFO
-		case CUST_ACTION_GET_PRIZE_HARDWARE_INFO:
-			req.set_cust_req.gethardwareInfo.action =
-				CUST_ACTION_GET_PRIZE_HARDWARE_INFO;
-			len = offsetof(struct SCP_SENSOR_HUB_SET_CUST_REQ, custData)
-				+ sizeof(req.set_cust_req.gethardwareInfo);
+		// new add for sec cali psensor
+		case CUST_ACTION_SEC_PCAL:
+			req.set_cust_req.sec_pcali.action = CUST_ACTION_SEC_PCAL;
+			req.set_cust_req.sec_pcali.sec_pcali = (*(int *)data);
+			printk("zch req.set_cust_req.sec_pcal.sec_pcal = %d\n", req.set_cust_req.sec_pcali.sec_pcali);
+			len = offsetof(struct SCP_SENSOR_HUB_SET_CUST_REQ,
+			custData) + sizeof(req.set_cust_req.sec_pcali);
 			break;
-		#endif
-		/* end, prize-lifenfen-20181126, add for sensorhub hardware info */
+
+		case CUST_ACTION_SET_FACTORY:
+			req.set_cust_req.setFactory.action =
+				CUST_ACTION_SET_FACTORY;
+			req.set_cust_req.setFactory.factory =
+				*((int32_t *) data);
+			len = offsetof(struct SCP_SENSOR_HUB_SET_CUST_REQ,
+				custData) + sizeof(req.set_cust_req.setFactory);
+			break;
 		default:
 			return -1;
 		}
@@ -2022,16 +1994,6 @@ int sensor_set_cmd_to_hub(uint8_t sensorType,
 			len = offsetof(struct SCP_SENSOR_HUB_SET_CUST_REQ,
 				custData) + sizeof(req.set_cust_req.getInfo);
 			break;
-		/* begin, prize-lifenfen-20181126, add for sensorhub hardware info */
-		#ifdef CONFIG_SENSORHUB_PRIZE_HARDWARE_INFO
-		case CUST_ACTION_GET_PRIZE_HARDWARE_INFO:
-			req.set_cust_req.gethardwareInfo.action =
-				CUST_ACTION_GET_PRIZE_HARDWARE_INFO;
-			len = offsetof(struct SCP_SENSOR_HUB_SET_CUST_REQ, custData)
-				+ sizeof(req.set_cust_req.gethardwareInfo);
-			break;
-		#endif
-		/* end, prize-lifenfen-20181126, add for sensorhub hardware info */
 		default:
 			return -1;
 		}
@@ -2092,16 +2054,6 @@ int sensor_set_cmd_to_hub(uint8_t sensorType,
 			len = offsetof(struct SCP_SENSOR_HUB_SET_CUST_REQ,
 				custData) + sizeof(req.set_cust_req.getInfo);
 			break;
-		/* begin, prize-lifenfen-20181126, add for sensorhub hardware info */
-		#ifdef CONFIG_SENSORHUB_PRIZE_HARDWARE_INFO
-		case CUST_ACTION_GET_PRIZE_HARDWARE_INFO:
-			req.set_cust_req.gethardwareInfo.action =
-				CUST_ACTION_GET_PRIZE_HARDWARE_INFO;
-			len = offsetof(struct SCP_SENSOR_HUB_SET_CUST_REQ, custData)
-				+ sizeof(req.set_cust_req.gethardwareInfo);
-			break;
-		#endif
-		/* end, prize-lifenfen-20181126, add for sensorhub hardware info */
 		default:
 			return -1;
 		}
@@ -2156,16 +2108,6 @@ int sensor_set_cmd_to_hub(uint8_t sensorType,
 			len = offsetof(struct SCP_SENSOR_HUB_SET_CUST_REQ,
 				custData) + sizeof(req.set_cust_req.getInfo);
 			break;
-		/* begin, prize-lifenfen-20181126, add for sensorhub hardware info */
-		#ifdef CONFIG_SENSORHUB_PRIZE_HARDWARE_INFO
-		case CUST_ACTION_GET_PRIZE_HARDWARE_INFO:
-			req.set_cust_req.gethardwareInfo.action =
-				CUST_ACTION_GET_PRIZE_HARDWARE_INFO;
-			len = offsetof(struct SCP_SENSOR_HUB_SET_CUST_REQ, custData)
-				+ sizeof(req.set_cust_req.gethardwareInfo);
-			break;
-		#endif
-		/* end, prize-lifenfen-20181126, add for sensorhub hardware info */
 		default:
 			return -1;
 		}
@@ -2222,49 +2164,11 @@ int sensor_set_cmd_to_hub(uint8_t sensorType,
 			&req.set_cust_rsp.getInfo.sensorInfo,
 			sizeof(struct sensorInfo_t));
 		break;
-	/* begin, prize-lifenfen-20181126, add for sensorhub hardware info */
-	#ifdef CONFIG_SENSORHUB_PRIZE_HARDWARE_INFO
-	case CUST_ACTION_GET_PRIZE_HARDWARE_INFO:
-		if (req.set_cust_rsp.gethardwareInfo.action !=
-			CUST_ACTION_GET_PRIZE_HARDWARE_INFO) {
-			pr_info("scp_sensorHub_req_send failed action!\n");
-			return -1;
-		}
-
-		memcpy((struct sensor_hardware_info_t *)data,
-			&req.set_cust_rsp.gethardwareInfo.hardwareInfo,
-			sizeof(struct sensor_hardware_info_t));
-		break;
-	#endif
-	/* end, prize-lifenfen-20181126, add for sensorhub hardware info */
 	default:
 		break;
 	}
 	return err;
 }
-
-/* begin, prize-lifenfen-20181126, add for sensorhub hardware info */
-#ifdef CONFIG_SENSORHUB_PRIZE_HARDWARE_INFO
-int sensorHub_get_hardware_info(int sensor, struct sensor_hardware_info_t *deviceinfo)
-{
-	int err = 0;
-	struct sensor_hardware_info_t info;
-
-	memset(&info, 0, sizeof(struct sensor_hardware_info_t));
-	err = sensor_set_cmd_to_hub(sensor,
-		CUST_ACTION_GET_PRIZE_HARDWARE_INFO, &info);
-	if (err < 0) {
-		pr_err("sensor(%d) not register\n", sensor);
-		return err;
-	}
-	pr_err("sensor:%x chip:%s id:%s more:%s vendor:%s \n", sensor, info.chip, info.id, info.more, info.vendor);
-
-	memcpy(deviceinfo, &info, sizeof(struct sensor_hardware_info_t));
-
-	return err;
-}
-#endif
-/* end, prize-lifenfen-20181126, add for sensorhub hardware info */
 
 static void restoring_enable_sensorHub_sensor(int handle)
 {
@@ -2532,7 +2436,8 @@ static ssize_t nanohub_trace_store(struct device_driver *ddri,
 	const char *buf, size_t count)
 {
 	struct SCP_sensorHub_data *obj = obj_data;
-	int handle, trace = 0;
+	int trace = 0;
+	unsigned int handle;
 	int res = 0;
 
 	pr_debug("%s buf:%s\n", __func__, buf);

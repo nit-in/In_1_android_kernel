@@ -3,6 +3,7 @@
 // mt6768-mt6358.c  --  mt6768 mt6358 ALSA SoC machine driver
 //
 // Copyright (c) 2018 MediaTek Inc.
+// Copyright (C) 2021 XiaoMi, Inc.
 // Author: Michael Hsiao <michael.hsiao@mediatek.com>
 
 #include <linux/module.h>
@@ -69,6 +70,13 @@ static int mt6768_spk_i2s_in_type_get(struct snd_kcontrol *kcontrol,
 	return 0;
 }
 
+#ifdef CONFIG_SND_SOC_AW87519
+extern unsigned char aw87519_audio_kspk(void);
+extern unsigned char aw87519_audio_drcv(void);
+extern unsigned char aw87519_audio_hvload(void);
+extern unsigned char aw87519_audio_off(void);
+#endif
+
 static int mt6768_mt6358_spk_amp_event(struct snd_soc_dapm_widget *w,
 				       struct snd_kcontrol *kcontrol,
 				       int event)
@@ -81,9 +89,15 @@ static int mt6768_mt6358_spk_amp_event(struct snd_soc_dapm_widget *w,
 	switch (event) {
 	case SND_SOC_DAPM_POST_PMU:
 		/* spk amp on control */
+#ifdef CONFIG_SND_SOC_AW87519
+		aw87519_audio_kspk();
+#endif
 		break;
 	case SND_SOC_DAPM_PRE_PMD:
 		/* spk amp off control */
+#ifdef CONFIG_SND_SOC_AW87519
+		aw87519_audio_off();
+#endif
 		break;
 	default:
 		break;
@@ -113,6 +127,30 @@ static const struct snd_kcontrol_new mt6768_mt6358_controls[] = {
 		     mt6768_spk_i2s_in_type_get, NULL),
 };
 
+
+
+#ifdef CONFIG_TARGET_PRODUCT_MERLINCOMMON
+static int cs35l41_dailink_init(struct snd_soc_pcm_runtime *rtd)
+{
+	struct snd_soc_card *card = rtd->card;
+	struct snd_soc_codec *spk_cdc = rtd->codec_dais[0]->codec;
+	struct snd_soc_dapm_context *cs35l41_dapm = snd_soc_codec_get_dapm(spk_cdc);
+	//dev_info(card->dev, "%s: found codec[%s]\n", __func__, dev_name(spk_cdc->dev));
+	snd_soc_dapm_ignore_suspend(cs35l41_dapm, "AMP Playback");
+	snd_soc_dapm_ignore_suspend(cs35l41_dapm, "AMP Capture");
+	snd_soc_dapm_ignore_suspend(cs35l41_dapm, "DSP1");
+	snd_soc_dapm_ignore_suspend(cs35l41_dapm, "Main AMP");
+	snd_soc_dapm_ignore_suspend(cs35l41_dapm, "ASPRX1");
+	snd_soc_dapm_ignore_suspend(cs35l41_dapm, "ASPRX2");
+	snd_soc_dapm_ignore_suspend(cs35l41_dapm, "ASPTX1");
+	snd_soc_dapm_ignore_suspend(cs35l41_dapm, "ASPTX2");
+	snd_soc_dapm_ignore_suspend(cs35l41_dapm, "SPK");
+	snd_soc_dapm_sync(cs35l41_dapm);
+	dev_info(card->dev, "%s: dapm ignore suspend[%s]\n", __func__, dev_name(spk_cdc->dev));
+	return 0;
+}
+#endif
+
 /*
  * define mtk_spk_i2s_mck node in dts when need mclk,
  * BE i2s need assign snd_soc_ops = mt6768_mt6358_i2s_ops
@@ -137,11 +175,11 @@ static int mt6768_mt6358_mtkaif_calibration(struct snd_soc_pcm_runtime *rtd)
 {
 	struct mtk_base_afe *afe = snd_soc_platform_get_drvdata(rtd->platform);
 	struct mt6768_afe_private *afe_priv = afe->platform_priv;
-	int phase;
-	unsigned int monitor;
-	int test_done_1, test_done_2;
-	int cycle_1, cycle_2, prev_cycle_1, prev_cycle_2;
-	int counter;
+	int phase = 0;
+	unsigned int monitor = 0;
+	int test_done_1, test_done_2 = 0;
+	int cycle_1, cycle_2, prev_cycle_1, prev_cycle_2 = 0;
+	int counter = 0;
 
 	dev_info(afe->dev, "%s(), start\n", __func__);
 
@@ -306,8 +344,8 @@ static int mt6768_mt6358_vow_startup(struct snd_pcm_substream *substream)
 {
 	struct snd_soc_pcm_runtime *rtd = substream->private_data;
 	struct mtk_base_afe *afe = snd_soc_platform_get_drvdata(rtd->platform);
-	struct snd_soc_component *component;
-	struct snd_soc_rtdcom_list *rtdcom;
+	struct snd_soc_component *component = NULL;
+	struct snd_soc_rtdcom_list *rtdcom = NULL;
 
 	dev_info(afe->dev, "%s(), start\n", __func__);
 	snd_soc_set_runtime_hwparams(substream, &mt6768_mt6358_vow_hardware);
@@ -326,8 +364,8 @@ static void mt6768_mt6358_vow_shutdown(struct snd_pcm_substream *substream)
 {
 	struct snd_soc_pcm_runtime *rtd = substream->private_data;
 	struct mtk_base_afe *afe = snd_soc_platform_get_drvdata(rtd->platform);
-	struct snd_soc_component *component;
-	struct snd_soc_rtdcom_list *rtdcom;
+	struct snd_soc_component *component = NULL;
+	struct snd_soc_rtdcom_list *rtdcom = NULL;
 
 	dev_info(afe->dev, "%s(), end\n", __func__);
 	mt6768_afe_gpio_request(afe, false, MT6768_DAI_VOW, 0);
@@ -545,6 +583,35 @@ static struct snd_soc_dai_link mt6768_mt6358_dai_links[] = {
 		.ignore_suspend = 1,
 		.init = mt6768_mt6358_init,
 	},
+#ifdef CONFIG_TARGET_PRODUCT_MERLINCOMMON
+	{
+		.name = "I2S3",
+		.cpu_dai_name = "I2S3",
+		.codec_dai_name = "cs35l41-pcm",
+		.codec_name = "spi3.0",
+		.dai_fmt = SND_SOC_DAIFMT_I2S |
+			SND_SOC_DAIFMT_CBS_CFS |
+			SND_SOC_DAIFMT_NB_NF,
+		.no_pcm = 1,
+		.dpcm_playback = 1,
+		.ignore_suspend = 1,
+		.be_hw_params_fixup = mt6768_i2s_hw_params_fixup,
+		.init = &cs35l41_dailink_init,
+	},
+	{
+		.name = "I2S0",
+		.cpu_dai_name = "I2S0",
+		.codec_dai_name = "cs35l41-pcm",
+		.codec_name = "spi3.0",
+		.dai_fmt = SND_SOC_DAIFMT_I2S |
+			SND_SOC_DAIFMT_CBS_CFS |
+			SND_SOC_DAIFMT_NB_NF,
+		.no_pcm = 1,
+		.dpcm_capture = 1,
+		.ignore_suspend = 1,
+		.be_hw_params_fixup = mt6768_i2s_hw_params_fixup,
+	},
+#else
 	{
 		.name = "I2S3",
 		.cpu_dai_name = "I2S3",
@@ -565,6 +632,7 @@ static struct snd_soc_dai_link mt6768_mt6358_dai_links[] = {
 		.ignore_suspend = 1,
 		.be_hw_params_fixup = mt6768_i2s_hw_params_fixup,
 	},
+#endif
 	{
 		.name = "I2S1",
 		.cpu_dai_name = "I2S1",

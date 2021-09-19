@@ -1,5 +1,6 @@
 /*
  * Copyright (C) 2015 MediaTek Inc.
+ * Copyright (C) 2021 XiaoMi, Inc.
  *
  * This program is free software: you can redistribute it and/or modify
  * it under the terms of the GNU General Public License version 2 as
@@ -199,6 +200,11 @@ int swtp_init(int md_id)
 	u32 ints1[4] = { 0, 0, 0, 0 };
 #endif
 
+	if (md_id < 0 || md_id >= SWTP_MAX_SUPPORT_MD) {
+		CCCI_LEGACY_ERR_LOG(-1, SYS,
+			"invalid md_id = %d\n", md_id);
+		return -1;
+	}
 	swtp_data[md_id].md_id = md_id;
 	swtp_data[md_id].curr_mode = SWTP_EINT_PIN_PLUG_OUT;
 	spin_lock_init(&swtp_data[md_id].spinlock);

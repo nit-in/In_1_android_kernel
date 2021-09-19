@@ -1,5 +1,6 @@
 /*
  * Copyright (C) 2016 MediaTek Inc.
+ * Copyright (C) 2021 XiaoMi, Inc.
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License version 2 as
@@ -13,7 +14,7 @@
 #ifndef __MTK_IR_CUS_NEC_DEFINE_H__
 #define __MTK_IR_CUS_NEC_DEFINE_H__
 
-#include "../inc/mtk_ir_core.h"
+#include "mtk_ir_core.h"
 
 #ifdef MTK_LK_IRRX_SUPPORT
 #include <platform/mtk_ir_lk_core.h>

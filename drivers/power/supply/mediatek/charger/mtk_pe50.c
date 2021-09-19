@@ -10,8 +10,6 @@
  * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
  * See http://www.gnu.org/licenses/gpl-2.0.html for more details.
  */
-#ifdef CONFIG_MTK_PUMP_EXPRESS_PLUS_50_SUPPORT
-/*prize-huangjiwu-20200730, add for rt9759 pe50 start*/
 
 #include <linux/errno.h>
 #include <linux/mutex.h>
@@ -118,5 +116,3 @@ int pe50_run(void)
 
 	return ret;
 }
-/*prize-huangjiwu-20200730, add for rt9759 pe50 end*/
-#endif

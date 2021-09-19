@@ -1,5 +1,6 @@
 /*
  * Copyright (C) 2015 MediaTek Inc.
+ * Copyright (C) 2021 XiaoMi, Inc.
  *
  * This program is free software: you can redistribute it and/or modify
  * it under the terms of the GNU General Public License version 2 as
@@ -288,6 +289,7 @@ struct disp_ccorr_config {
 	bool is_dirty;
 	int mode;
 	int color_matrix[16];
+	bool featureFlag;
 };
 
 struct disp_session_input_config {
@@ -431,6 +433,9 @@ enum DISP_FEATURE {
 	DISP_FEATURE_FBDC = 0x00000100,
 	DISP_FEATURE_FORCE_DISABLE_AOD = 0x00000200,
 	DISP_FEATURE_ARR = 0x00000400,
+
+	/*reserve 0x00000400 for ARR*/
+
 	DISP_FEATURE_DYNFPS = 0x00000800
 };
 
@@ -480,6 +485,8 @@ enum LAYERING_CAPS {
 	MDP_ROT_LAYER =		0x00000008,
 	MDP_HDR_LAYER =		0x00000010,
 	NO_FBDC =		0x00000020,
+	CLIENT_CLEAR_LAYER =    0x00000040,
+	DISP_CLIENT_CLEAR_LAYER =       0x00000080,
 };
 
 struct layer_config {

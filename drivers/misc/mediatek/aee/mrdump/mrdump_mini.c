@@ -42,7 +42,6 @@
 #include "../../../../kernel/sched/sched.h"
 #include "mrdump_mini.h"
 #include "mrdump_private.h"
-#include <mach/memory_layout.h>
 
 #define LOG_DEBUG(fmt, ...)			\
 	do {	\
@@ -598,6 +597,15 @@ void mrdump_mini_build_task_info(struct pt_regs *regs)
 	 */
 	trace.skip = 4;
 	save_stack_trace_tsk(cur, &trace);
+	if (regs) {
+		cur_proc->ke_frame.pc = (__u64) regs->reg_pc;
+		cur_proc->ke_frame.lr = (__u64) regs->reg_lr;
+	} else {
+		/* in case panic() is called without die */
+		/* Todo: a UT for this */
+		cur_proc->ke_frame.pc = ipanic_stack_entries[0];
+		cur_proc->ke_frame.lr = ipanic_stack_entries[1];
+	}
 	/* Skip the entries -
 	 * ipanic_save_current_tsk_info/save_stack_trace_tsk
 	 */
@@ -605,6 +613,8 @@ void mrdump_mini_build_task_info(struct pt_regs *regs)
 		off = strlen(cur_proc->backtrace);
 		plen = AEE_BACKTRACE_LENGTH - ALIGN(off, 8);
 		if (plen > 16) {
+			if (ipanic_stack_entries[i] != cur_proc->ke_frame.pc)
+				ipanic_stack_entries[i] -= 4;
 			sz = snprintf(symbol, 96, "[<%px>] %pS\n",
 				      (void *)ipanic_stack_entries[i],
 				      (void *)ipanic_stack_entries[i]);
@@ -617,15 +627,6 @@ void mrdump_mini_build_task_info(struct pt_regs *regs)
 				memcpy(cur_proc->backtrace + ALIGN(off, 8),
 						symbol, ALIGN(sz, 8));
 		}
-	}
-	if (regs) {
-		cur_proc->ke_frame.pc = (__u64) regs->reg_pc;
-		cur_proc->ke_frame.lr = (__u64) regs->reg_lr;
-	} else {
-		/* in case panic() is called without die */
-		/* Todo: a UT for this */
-		cur_proc->ke_frame.pc = ipanic_stack_entries[0];
-		cur_proc->ke_frame.lr = ipanic_stack_entries[1];
 	}
 	snprintf(cur_proc->ke_frame.pc_symbol, AEE_SZ_SYMBOL_S, "[<%px>] %pS",
 		 (void *)(unsigned long)cur_proc->ke_frame.pc,

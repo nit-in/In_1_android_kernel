@@ -763,6 +763,9 @@ static int ext_id_tuning(struct disp_layer_info *info, int disp)
 	int ovl_num;
 #endif
 
+	if (disp < 0)
+		return -EFAULT;
+
 	if (info->layer_num[disp] <= 0)
 		return 0;
 
@@ -1919,6 +1922,12 @@ static void debug_set_layer_data(struct disp_layer_info *disp_info,
 	if (data_type != HRT_LAYER_DATA_ID && layer_id == -1)
 		return;
 
+	if (unlikely((unsigned int)disp_id >= 2)) {
+		DISPWARN("%s #%d disp_id error:%d\n",
+			 __func__, __LINE__, disp_id);
+		return;
+	}
+
 	layer_info = &disp_info->input_config[disp_id][layer_id];
 	switch (data_type) {
 	case HRT_LAYER_DATA_ID:
@@ -1956,6 +1965,8 @@ static char *parse_hrt_data_value(char *start, long int *value)
 	int ret;
 
 	tok_start = strchr(start + 1, ']');
+	if (!tok_start)
+		return tok_end;
 	tok_end = strchr(tok_start + 1, '[');
 	if (tok_end)
 		*tok_end = 0;
@@ -2023,7 +2034,7 @@ static int load_hrt_test_data(struct disp_layer_info *disp_info)
 			tok = parse_hrt_data_value(tok, &disp_id);
 			if (!tok)
 				DISPWARN("can not parse disp_id\n");
-			if (disp_id > HRT_SECONDARY)
+			if (disp_id > HRT_SECONDARY || disp_id < 0)
 				goto end;
 
 			if (layer_num != 0) {

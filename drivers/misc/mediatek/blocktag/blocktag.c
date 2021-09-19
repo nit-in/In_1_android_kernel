@@ -163,19 +163,20 @@ EXPORT_SYMBOL_GPL(mtk_btag_pidlog_insert);
 static void mtk_btag_pidlog_add(struct request_queue *q, struct bio *bio,
 	unsigned short pid, __u32 len)
 {
-	int write = bio_data_dir(bio);
 	int major = bio->bi_disk ? MAJOR(bio_dev(bio)) : 0;
 
 	if (pid != 0xFFFF && major) {
 #ifdef CONFIG_MTK_UFS_BLOCK_IO_LOG
 		if (major == SCSI_DISK0_MAJOR || major == BLOCK_EXT_MAJOR) {
-			mtk_btag_pidlog_add_ufs(q, pid, len, write);
+			mtk_btag_pidlog_add_ufs(q, pid, len,
+						bio_data_dir(bio));
 			return;
 		}
 #endif
 #ifdef CONFIG_MMC_BLOCK_IO_LOG
 		if (major == MMC_BLOCK_MAJOR || major == BLOCK_EXT_MAJOR) {
-			mtk_btag_pidlog_add_mmc(q, pid, len, write);
+			mtk_btag_pidlog_add_mmc(q, pid, len,
+						bio_data_dir(bio));
 			return;
 		}
 #endif
@@ -1335,29 +1336,26 @@ int mtk_btag_mictx_get_data(
 
 void mtk_btag_mictx_enable(int enable)
 {
-	if (enable && mtk_btag_mictx)
+	if (enable && mtk_btag_mictx_ready)
 		return;
 
 	if (enable) {
-		mtk_btag_mictx =
-			kzalloc(sizeof(struct mtk_btag_mictx_struct), GFP_NOFS);
 		if (!mtk_btag_mictx) {
-			pr_info("[BLOCK_TAG] mtk_btag_mictx allocation fail, disabled.\n");
-			return;
-		}
+			mtk_btag_mictx =
+				kzalloc(sizeof(struct mtk_btag_mictx_struct),
+					GFP_NOFS);
+			if (!mtk_btag_mictx) {
+				pr_info("[BLOCK_TAG] mtk_btag_mictx allocation fail, disabled.\n");
+				return;
+			}
 
-		spin_lock_init(&mtk_btag_mictx->lock);
+			spin_lock_init(&mtk_btag_mictx->lock);
+		}
 		mtk_btag_mictx_reset(mtk_btag_mictx, 0);
 		mtk_btag_mictx_ready = 1;
 
-	} else {
-		if (!mtk_btag_mictx)
-			return;
-
+	} else
 		mtk_btag_mictx_ready = 0;
-		kfree(mtk_btag_mictx);
-		mtk_btag_mictx = NULL;
-	}
 }
 
 static int __init mtk_btag_init(void)

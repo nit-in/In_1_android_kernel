@@ -10,8 +10,6 @@
  * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
  * See http://www.gnu.org/licenses/gpl-2.0.html for more details.
  */
-#ifdef CONFIG_MTK_PUMP_EXPRESS_PLUS_50_SUPPORT
-/*prize-huangjiwu-20200730, add for rt9759 pe50 start*/
 
 #ifndef __MTK_PE_50_H
 #define __MTK_PE_50_H
@@ -31,7 +29,7 @@ struct pe50 {
 	bool is_enabled;
 };
 
-#ifdef CONFIG_MTK_PUMP_EXPRESS_PLUS_50_SUPPORT
+#ifdef CONFIG_MTK_PUMP_EXPRESS_50_SUPPORT
 extern int pe50_init(void);
 extern bool pe50_is_ready(void);
 extern int pe50_stop(void);
@@ -56,7 +54,5 @@ static inline  int pe50_run(void)
 {
 	return -ENOTSUPP;
 }
-#endif /* CONFIG_MTK_PUMP_EXPRESS_PLUS_50_SUPPORT */
+#endif /* CONFIG_MTK_PUMP_EXPRESS_50_SUPPORT */
 #endif /* __MTK_PE_50_H */
-/*prize-huangjiwu-20200730, add for rt9759 pe50 end*/
-#endif

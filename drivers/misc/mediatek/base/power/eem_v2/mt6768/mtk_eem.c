@@ -1847,7 +1847,7 @@ skip_update:
 static int eem_volt_thread_handler(void *data)
 {
 	struct eem_ctrl *ctrl = (struct eem_ctrl *)data;
-	struct eem_det *det = id_to_eem_det(ctrl->det_id);
+	struct eem_det *det;
 #ifdef CONFIG_EEM_AEE_RR_REC
 	int temp = -1;
 #endif
@@ -1858,7 +1858,12 @@ static int eem_volt_thread_handler(void *data)
 #endif
 
 	FUNC_ENTER(FUNC_LV_HELP);
+	if (ctrl == NULL)
+		return 0;
 
+	det = id_to_eem_det(ctrl->det_id);
+	if (det == NULL)
+		return 0;
 	do {
 		eem_debug("In thread handler\n");
 		wait_event_interruptible(ctrl->wq, ctrl->volt_update);
@@ -2472,6 +2477,9 @@ static void eem_set_eem_volt(struct eem_det *det)
 	struct eem_ctrl *ctrl = id_to_eem_ctrl(det->ctrl_id);
 
 	FUNC_ENTER(FUNC_LV_HELP);
+	if (ctrl == NULL)
+		return;
+
 	ctrl->volt_update |= EEM_VOLT_UPDATE;
 	dsb(sy);
 	eem_debug("@@!In %s\n", __func__);
@@ -4719,13 +4727,9 @@ static int __init eem_init(void)
 	g_fake_efuse = 1;
 #endif
 
-#if defined(CONFIG_ARM64) && \
-	defined(CONFIG_BUILD_ARM64_DTB_OVERLAY_IMAGE_NAMES)
-	if ((strstr(CONFIG_BUILD_ARM64_DTB_OVERLAY_IMAGE_NAMES,
-		"k68v1_64_aging") != NULL)) {
-		/* Aging load: Apply real efuse */
-		g_fake_efuse = 0;
-	}
+#if defined(AGING_LOAD)
+	/* Aging load: Apply real efuse */
+	g_fake_efuse = 0;
 #endif
 	FT_VAL = get_devinfo_with_index(DEVINFO_IDX_0);
 	FT_VAL = (FT_VAL >> 4) & 0xF;

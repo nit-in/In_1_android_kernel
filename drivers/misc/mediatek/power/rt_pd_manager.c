@@ -22,7 +22,7 @@
 #include <linux/reboot.h>
 #include <linux/pm.h>
 #include <linux/cpumask.h>
-#include <linux/delay.h>
+
 #include "tcpm.h"
 
 #include <mt-plat/upmu_common.h>
@@ -48,9 +48,7 @@ static int pd_sink_voltage_new;
 static int pd_sink_voltage_old;
 static int pd_sink_current_new;
 static int pd_sink_current_old;
-static unsigned char pd_sink_type;
 static bool tcpc_kpoc;
-static unsigned char bc12_chr_type;
 #if 0 /* vconn is from vsys on mt6763 */
 /* vconn boost gpio pin */
 static int vconn_gpio;
@@ -159,18 +157,6 @@ bool mtk_is_pep30_en_unlock(void)
 	return false;
 }
 
-//prize hushilun add anolog earthphone b
-#if !defined(CONFIG_PRIZE_NO_PRIZE_TYPEC)
-extern void typec_pinctrl_sel(int state);
-extern void typec_pinctrl_mic(int state);
-#if defined(CONFIG_PRIZE_SWITCH_SGM3798_SUPPORT)
-extern void typec_pinctrl_mic_reverse(void);
-#endif
-bool g_acc_connected = false;
-extern void accdet_eint_func_extern(int state);
-#endif
-//hushilun add anolog earthphone e
-
 static int pd_tcp_notifier_call(struct notifier_block *nb,
 					unsigned long event, void *data)
 {
@@ -198,62 +184,31 @@ static int pd_tcp_notifier_call(struct notifier_block *nb,
 		mutex_lock(&param_lock);
 		pd_sink_voltage_new = noti->vbus_state.mv;
 		pd_sink_current_new = noti->vbus_state.ma;
-
-		if (noti->vbus_state.type & TCP_VBUS_CTRL_PD_DETECT)
-			pd_sink_type = SINK_TYPE_PD_CONNECTED;
-		else if (noti->vbus_state.type == TCP_VBUS_CTRL_REMOVE)
-			pd_sink_type = SINK_TYPE_REMOVE;
-		else if (noti->vbus_state.type == TCP_VBUS_CTRL_TYPEC)
-			pd_sink_type = SINK_TYPE_TYPEC;
-		else if (noti->vbus_state.type == TCP_VBUS_CTRL_PD)
-			pd_sink_type = SINK_TYPE_PD_TRY;
-		else if (noti->vbus_state.type == TCP_VBUS_CTRL_REQUEST)
-			pd_sink_type = SINK_TYPE_REQUEST;
-		pr_info("%s sink vbus %dmv %dma type(%d)\n", __func__,
-			pd_sink_voltage_new, pd_sink_current_new, pd_sink_type);
-		mutex_unlock(&param_lock);
+		pr_info("%s sink vbus %dmV %dmA type(0x%02X)\n", __func__,
+			pd_sink_voltage_new, pd_sink_current_new,
+			noti->vbus_state.type);
 
 		if ((pd_sink_voltage_new != pd_sink_voltage_old) ||
 		    (pd_sink_current_new != pd_sink_current_old)) {
-			if (pd_sink_voltage_new) {
-				/* enable charger */
+			pd_sink_voltage_old = pd_sink_voltage_new;
+			pd_sink_current_old = pd_sink_current_new;
+			if (pd_sink_voltage_new && pd_sink_current_new) {
 #if CONFIG_MTK_GAUGE_VERSION == 30
 				charger_manager_enable_power_path(chg_consumer,
 					MAIN_CHARGER, true);
 #else
 				mtk_chr_pd_enable_power_path(1);
 #endif
-				pd_sink_voltage_old = pd_sink_voltage_new;
-				pd_sink_current_old = pd_sink_current_new;
-			} else if (pd_sink_type == SINK_TYPE_REMOVE) {
-				if (tcpc_kpoc)
-					break;
+			} else if (!tcpc_kpoc) {
 #if CONFIG_MTK_GAUGE_VERSION == 30
 				charger_manager_enable_power_path(chg_consumer,
 					MAIN_CHARGER, false);
 #else
 				mtk_chr_pd_enable_power_path(0);
 #endif
-				pd_sink_voltage_old = pd_sink_voltage_new;
-				pd_sink_current_old = pd_sink_current_new;
-			} else {
-				bc12_chr_type = mt_get_charger_type();
-				if (bc12_chr_type >= STANDARD_HOST &&
-				    bc12_chr_type <= STANDARD_CHARGER)
-					break;
-				if (tcpc_kpoc)
-					break;
-				/* disable charge */
-#if CONFIG_MTK_GAUGE_VERSION == 30
-				charger_manager_enable_power_path(chg_consumer,
-					MAIN_CHARGER, false);
-#else
-				mtk_chr_pd_enable_power_path(0);
-#endif
-				pd_sink_voltage_old = pd_sink_voltage_new;
-				pd_sink_current_old = pd_sink_current_new;
 			}
 		}
+		mutex_unlock(&param_lock);
 		break;
 	case TCP_NOTIFY_TYPEC_STATE:
 		if (noti->typec_state.old_state == TYPEC_UNATTACHED &&
@@ -261,50 +216,10 @@ static int pd_tcp_notifier_call(struct notifier_block *nb,
 			/* AUDIO plug in */
 			pr_info("%s audio plug in\n", __func__);
 
-			//prize hushilun add anolog earthphone b
-#if !defined(CONFIG_PRIZE_NO_PRIZE_TYPEC)
-#if defined(CONFIG_PRIZE_SWITCH_SGM3798_SUPPORT)
-			g_acc_connected = true;
-			typec_pinctrl_sel(!!g_acc_connected);
-			accdet_eint_func_extern(!!g_acc_connected);
-			typec_pinctrl_sel(!g_acc_connected);
-#else
-		     /* DO IVVI EVENT */
-		     printk("tronchen case TCP_NOTIFY_TYPEC_STATE: TYPEC  plug in!\n");
-		     //  mutex_lock(&tcpc_usb_connect_lock);
-		 
-		    //  tcpc_usb_connected = true;
-		    //  mutex_unlock(&tcpc_usb_connect_lock);
-		    //accdet_ap_eint_func_extern(tcpc_usb_connected);
-		 
-		     g_acc_connected = true;
-		     typec_pinctrl_sel(!!g_acc_connected);
-		     msleep(50);
-		     typec_pinctrl_mic(!!g_acc_connected);
-		     accdet_eint_func_extern(!!g_acc_connected);
-		     msleep(150);
-		     typec_pinctrl_sel(!g_acc_connected);													 																 
-#endif
-#endif
-			//prize hushilun add anolog earthphone e
-			
 		} else if (noti->typec_state.old_state == TYPEC_ATTACHED_AUDIO
 			&& noti->typec_state.new_state == TYPEC_UNATTACHED) {
 			/* AUDIO plug out */
 			pr_info("%s audio plug out\n", __func__);
-
-			//prize hushilun add anolog earthphone b
-#if !defined(CONFIG_PRIZE_NO_PRIZE_TYPEC)
-			g_acc_connected = false;
-#if defined(CONFIG_PRIZE_SWITCH_SGM3798_SUPPORT)
-			typec_pinctrl_mic_reverse();
-#else
-			typec_pinctrl_mic(!!g_acc_connected);
-#endif
-			//typec_pinctrl_sel(!g_acc_connected);
-			accdet_eint_func_extern(!!g_acc_connected);
-#endif
-			//hushilun add anolog earthphone e
 		}
 		break;
 	case TCP_NOTIFY_PD_STATE:

@@ -156,7 +156,7 @@ unsigned int ovl_to_index(enum DISP_MODULE_ENUM module)
 
 static inline enum DISP_MODULE_ENUM ovl_index_to_module(int index)
 {
-	if (index >= OVL_NUM) {
+	if (index >= OVL_NUM || index < 0) {
 		DDPERR("invalid ovl index=%d\n", index);
 		ASSERT(0);
 	}
@@ -1032,7 +1032,7 @@ int ovl_switch_to_nonsec(enum DISP_MODULE_ENUM module, void *handle)
 static int setup_ovl_sec(enum DISP_MODULE_ENUM module,
 			 struct disp_ddp_path_config *pConfig, void *handle)
 {
-	int ret;
+	int ret = 0;
 	int layer_id;
 	int has_sec_layer = 0;
 	struct OVL_CONFIG_STRUCT *ovl_config;

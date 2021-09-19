@@ -10,8 +10,6 @@
  * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
  * See http://www.gnu.org/licenses/gpl-2.0.html for more details.
  */
-#ifdef CONFIG_MTK_PUMP_EXPRESS_PLUS_50_SUPPORT
-/*prize-huangjiwu-20200730, add for rt9759 pe50 start*/
 
 #ifndef __MTK_PDC_H
 #define __MTK_PDC_H
@@ -70,12 +68,13 @@ struct pdc {
 };
 
 extern int pdc_init(void);
+extern bool pdc_is_enable(void);
+extern bool pdc_is_connect(void);
 extern bool pdc_is_ready(void);
+extern int pdc_reset(void);
 extern int pdc_stop(void);
 extern int pdc_run(void);
 extern int pdc_set_data(struct pdc_data data);
 extern struct pdc_data *pdc_get_data(void);
 
 #endif /* __MTK_PDC_H */
-/*prize-huangjiwu-20200730, add for rt9759 pe50 start*/
-#endif

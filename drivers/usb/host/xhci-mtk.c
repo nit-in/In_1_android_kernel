@@ -2,6 +2,7 @@
  * MediaTek xHCI Host Controller Driver
  *
  * Copyright (c) 2015 MediaTek Inc.
+ * Copyright (C) 2021 XiaoMi, Inc.
  * Author:
  *  Chunfeng Yun <chunfeng.yun@mediatek.com>
  *
@@ -33,6 +34,10 @@
 
 #include "xhci.h"
 #include "xhci-mtk.h"
+
+#if IS_ENABLED(CONFIG_MACH_MT6853)
+#include "mtu3_hal.h"
+#endif
 
 /* ip_pw_ctrl0 register */
 #define CTRL0_IP_SW_RST	BIT(0)
@@ -90,6 +95,81 @@
 #define HOST_CMD_TEST_SE0_NAK       0x3
 #define HOST_CMD_TEST_PACKET        0x4
 #define PMSC_PORT_TEST_CTRL_OFFSET  28
+
+/* frmcnt */
+#define INIT_FRMCNT_LEV1_FULL_RANGE 0x944
+#define INIT_FRMCNT_FRMCNT_C(x)	(((x) & 0xfff) << 8)
+
+#if IS_ENABLED(CONFIG_MACH_MT6853)
+static void xhci_mtk_frmcnt_range(struct usb_hcd *hcd, int speed)
+{
+	struct xhci_hcd *xhci = hcd_to_xhci(hcd);
+	u32 value;
+
+	value = readl(hcd->regs + INIT_FRMCNT_LEV1_FULL_RANGE);
+	value &= ~(INIT_FRMCNT_FRMCNT_C(0xfff));
+
+	if (speed == DEV_SPEED_FULL)
+		value |= INIT_FRMCNT_FRMCNT_C(0x144);
+	else
+		value |= INIT_FRMCNT_FRMCNT_C(0x12b);
+
+	writel(value, hcd->regs + INIT_FRMCNT_LEV1_FULL_RANGE);
+}
+#endif
+
+void xhci_mtk_set_port_mode(struct usb_hcd *hcd,
+		__le32 __iomem **port_array, int port_id)
+{
+#if IS_ENABLED(CONFIG_MACH_MT6853)
+	struct xhci_hcd_mtk *mtk = hcd_to_mtk(hcd);
+	struct xhci_hcd *xhci = hcd_to_xhci(mtk->hcd);
+	unsigned long flags;
+	u32 temp;
+	int old_speed;
+	int new_speed;
+
+	temp = readl(port_array[port_id]);
+	old_speed = mtk->last_speed;
+	new_speed = DEV_PORT_SPEED(temp);
+	mtk->last_speed = new_speed;
+	xhci_info(xhci, "old_speed=%d, new_speed=%d\n",
+			  old_speed, new_speed);
+
+	if (old_speed == new_speed || (old_speed != DEV_SPEED_FULL &&
+			new_speed != DEV_SPEED_FULL))
+		return;
+
+	xhci_set_link_state(xhci, port_array, port_id, XDEV_U3);
+
+	spin_unlock_irqrestore(&xhci->lock, flags);
+	if (readl_poll_timeout_atomic(port_array[port_id], temp,
+			(temp & PORT_PLS_MASK) == XDEV_U3, 100, 100000))
+		xhci_warn(xhci, "port suspend timeout\n");
+	spin_lock_irqsave(&xhci->lock, flags);
+
+	spin_unlock_irqrestore(&xhci->lock, flags);
+	ssusb_set_phy_mode(new_speed);
+	spin_lock_irqsave(&xhci->lock, flags);
+
+	xhci_mtk_frmcnt_range(hcd, new_speed);
+
+	xhci_set_link_state(xhci, port_array, port_id, XDEV_RESUME);
+	spin_unlock_irqrestore(&xhci->lock, flags);
+	mdelay(USB_RESUME_TIMEOUT);
+	spin_lock_irqsave(&xhci->lock, flags);
+
+	xhci_set_link_state(xhci, port_array, port_id, XDEV_U0);
+	spin_unlock_irqrestore(&xhci->lock, flags);
+	mdelay(50);
+	spin_lock_irqsave(&xhci->lock, flags);
+
+	temp = readl(port_array[port_id]);
+	if ((temp & PORT_PLS_MASK) != XDEV_U0)
+		xhci_warn(xhci, "error resume 0x%08x!!!\n", temp);
+#endif
+}
+
 
 static ssize_t xhci_mtk_test_mode_write(struct file *file,
 		const char __user *ubuf, size_t count, loff_t *ppos)
@@ -633,6 +713,13 @@ static void xhci_mtk_quirks(struct device *dev, struct xhci_hcd *xhci)
 	xhci->quirks |= XHCI_SPURIOUS_SUCCESS;
 	if (mtk->lpm_support)
 		xhci->quirks |= XHCI_LPM_SUPPORT;
+
+	/*
+	 * MTK xHCI 0.96: PSA is 1 by default even if doesn't support stream,
+	 * and it's 3 when support it.
+	 */
+	if (xhci->hci_version < 0x100 && HCC_MAX_PSA(xhci->hcc_params) == 4)
+		xhci->quirks |= XHCI_BROKEN_STREAMS;
 }
 
 /* called during probe() after chip reset completes */
@@ -682,6 +769,18 @@ static int xhci_mtk_probe(struct platform_device *pdev)
 	if (usb_disabled())
 		return -ENODEV;
 
+	if (of_device_is_compatible(node, "mediatek,mt67xx-xhci")) {
+		ret = device_rename(dev, node->name);
+		if (ret)
+			dev_info(&pdev->dev, "failed to rename\n");
+		else {
+			/* fix uaf(use after free) issue: backup pdev->name,
+			 * device_rename will free pdev->name
+			 */
+			pdev->name = pdev->dev.kobj.name;
+		}
+	}
+
 	driver = &xhci_mtk_hc_driver;
 	mtk = devm_kzalloc(dev, sizeof(*mtk), GFP_KERNEL);
 	if (!mtk)
@@ -702,8 +801,10 @@ static int xhci_mtk_probe(struct platform_device *pdev)
 
 	mtk->sys_clk = devm_clk_get(dev, "sys_ck");
 	if (IS_ERR(mtk->sys_clk)) {
-		dev_err(dev, "fail to get sys_ck\n");
-		return PTR_ERR(mtk->sys_clk);
+		if (PTR_ERR(mtk->sys_clk) == -EPROBE_DEFER)
+			return -EPROBE_DEFER;
+
+		mtk->sys_clk = NULL;
 	}
 
 	/*
@@ -829,7 +930,8 @@ static int xhci_mtk_probe(struct platform_device *pdev)
 	if (ret)
 		goto put_usb3_hcd;
 
-	if (HCC_MAX_PSA(xhci->hcc_params) >= 4)
+	if (HCC_MAX_PSA(xhci->hcc_params) >= 4 &&
+	    !(xhci->quirks & XHCI_BROKEN_STREAMS))
 		xhci->shared_hcd->can_do_streams = 1;
 
 	ret = usb_add_hcd(xhci->shared_hcd, irq, IRQF_SHARED);
@@ -885,6 +987,13 @@ static int xhci_mtk_remove(struct platform_device *dev)
 	pm_runtime_disable(&dev->dev);
 
 	xhci->xhc_state |= XHCI_STATE_REMOVING;
+
+#if IS_ENABLED(CONFIG_MACH_MT6853)
+	if (mtk->last_speed == DEV_SPEED_FULL) {
+		ssusb_set_phy_mode(DEV_SPEED_INACTIVE);
+		xhci_mtk_frmcnt_range(hcd, DEV_SPEED_INACTIVE);
+	}
+#endif
 
 	usb_remove_hcd(shared_hcd);
 	xhci->shared_hcd = NULL;
@@ -957,7 +1066,13 @@ static int __maybe_unused xhci_mtk_suspend(struct device *dev)
 
 	xhci_mtk_host_disable(mtk);
 	xhci_mtk_phy_power_off(mtk);
+#if IS_ENABLED(CONFIG_MTK_UAC_POWER_SAVING)
+	if (xhci->msram_virt_addr)
+		xhci_mtk_clks_disable(mtk);
+#else
 	xhci_mtk_clks_disable(mtk);
+#endif
+
 	usb_wakeup_enable(mtk);
 	return 0;
 }
@@ -970,7 +1085,12 @@ static int __maybe_unused xhci_mtk_resume(struct device *dev)
 
 	xhci_info(xhci, "%s\n", __func__);
 	usb_wakeup_disable(mtk);
+#if IS_ENABLED(CONFIG_MTK_UAC_POWER_SAVING)
+	if (xhci->msram_virt_addr)
+		xhci_mtk_clks_enable(mtk);
+#else
 	xhci_mtk_clks_enable(mtk);
+#endif
 	xhci_mtk_phy_power_on(mtk);
 	xhci_mtk_host_enable(mtk);
 

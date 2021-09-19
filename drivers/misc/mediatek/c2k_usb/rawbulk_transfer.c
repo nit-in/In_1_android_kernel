@@ -1,5 +1,6 @@
 /*
  * Copyright (C) 2017 MediaTek Inc.
+ * Copyright (C) 2021 XiaoMi, Inc.
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License version 2 as
@@ -232,6 +233,7 @@ static struct upstream_transaction *alloc_upstream_transaction(
 		struct rawbulk_transfer *transfer, int bufsz)
 {
 	struct upstream_transaction *t;
+	int ret = 0;
 
 	C2K_DBG("%s\n", __func__);
 
@@ -258,9 +260,11 @@ static struct upstream_transaction *alloc_upstream_transaction(
 		goto failto_alloc_usb_request;
 	t->req->context = t;
 	t->name[0] = 0;
-	snprintf(t->name, sizeof(t->name), "U%d ( G:%s)",
+	ret = snprintf(t->name, sizeof(t->name), "U%d ( G:%s)",
 		transfer->upstream.ntrans, transfer->upstream.ep->name);
-
+	if (ret < 0 || ret >= sizeof(t->name))
+		C2K_ERR("%s-%d:snprintf fail, ret=%d\n",
+			__func__, __LINE__, ret);
 	INIT_LIST_HEAD(&t->tlist);
 	list_add_tail(&t->tlist, &transfer->upstream.transactions);
 	transfer->upstream.ntrans++;
@@ -889,14 +893,24 @@ int rawbulk_start_transactions(int transfer_id, int nups, int ndowns, int upsz,
 		return -ENODEV;
 
 	memset(name, 0, 20);
-	snprintf(name, sizeof(name), "%s_flow_ctrl",
+	ret = snprintf(name, sizeof(name), "%s_flow_ctrl",
 			transfer_name[transfer_id]);
+	if (ret > 20)
+		C2K_NOTE("%s: transfer_name %s excced log buffer\n", __func__,
+			transfer_name[transfer_id]);
+
 	if (!transfer->flow_wq)
 		transfer->flow_wq = create_singlethread_workqueue(name);
 	if (!transfer->flow_wq)
 		return -ENOMEM;
+
 	memset(name, 0, 20);
-	snprintf(name, sizeof(name), "%s_tx_wq", transfer_name[transfer_id]);
+	ret = snprintf(name, sizeof(name), "%s_tx_wq",
+			transfer_name[transfer_id]);
+	if (ret > 20)
+		C2K_NOTE("%s: transfer_name %s excced log buffer\n", __func__,
+			transfer_name[transfer_id]);
+
 	if (!transfer->tx_wq)
 		transfer->tx_wq = create_singlethread_workqueue(name);
 	if (!transfer->tx_wq)

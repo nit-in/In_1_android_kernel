@@ -1,6 +1,7 @@
 /* GYRO_HUB motion sensor driver
  *
  * Copyright (C) 2016 MediaTek Inc.
+ * Copyright (C) 2021 XiaoMi, Inc.
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License version 2 as
@@ -52,7 +53,7 @@ struct gyrohub_ipi_data {
 	atomic_t first_ready_after_boot;
 	bool factory_enable;
 	bool android_enable;
-	struct completion calibration_done;
+	//struct completion calibration_done;
 	struct completion selftest_done;
 };
 static struct gyrohub_ipi_data *obj_ipi_data;
@@ -173,6 +174,7 @@ static int gyrohub_ReadGyroData(char *buf, int bufsize)
 	int gyro[GYROHUB_AXES_NUM];
 	int err = 0;
 	int status = 0;
+	int len = 0;
 
 	if (atomic_read(&obj->suspend))
 		return -3;
@@ -190,13 +192,13 @@ static int gyrohub_ReadGyroData(char *buf, int bufsize)
 	gyro[GYROHUB_AXIS_Y]	= data.gyroscope_t.y;
 	gyro[GYROHUB_AXIS_Z]	= data.gyroscope_t.z;
 	status					= data.gyroscope_t.status;
-	sprintf(buf, "%04x %04x %04x %04x",
+	len = sprintf(buf, "%04x %04x %04x %04x",
 		gyro[GYROHUB_AXIS_X],
 		gyro[GYROHUB_AXIS_Y],
 		gyro[GYROHUB_AXIS_Z],
 		status);
 
-	if (atomic_read(&obj->trace) & GYRO_TRC_DATA)
+	if ((atomic_read(&obj->trace) & GYRO_TRC_DATA) && (len > 0))
 		pr_debug("gsensor data: %s!\n", buf);
 
 	return 0;
@@ -212,7 +214,9 @@ static int gyrohub_ReadChipInfo(char *buf, int bufsize)
 	if ((buf == NULL) || (bufsize <= 30))
 		return -1;
 
-	sprintf(buf, "GYROHUB Chip");
+	if (sprintf(buf, "GYROHUB Chip") <= 0)
+		return -1;
+
 	return 0;
 }
 
@@ -521,7 +525,7 @@ static int gyro_recv_data(struct data_unit_t *event, void *reserved)
 		obj->static_cali[GYROHUB_AXIS_Z] = event->gyroscope_t.z_bias;
 		obj->static_cali_status = (uint8_t)event->gyroscope_t.status;
 		spin_unlock(&calibration_lock);
-		complete(&obj->calibration_done);
+		//complete(&obj->calibration_done);
 	} else if (event->flush_action == TEMP_ACTION) {
 		/* temp action occur when gyro disable,
 		 *so we always should send data to userspace
@@ -614,7 +618,7 @@ static int gyrohub_factory_set_cali(int32_t data[3])
 }
 static int gyrohub_factory_get_cali(int32_t data[3])
 {
-	int err = 0;
+	//int err = 0;
 #ifndef MTK_OLD_FACTORY_CALIBRATION
 	struct gyrohub_ipi_data *obj = obj_ipi_data;
 	uint8_t status = 0;
@@ -627,12 +631,13 @@ static int gyrohub_factory_get_cali(int32_t data[3])
 		return -1;
 	}
 #else
-	err = wait_for_completion_timeout(&obj->calibration_done,
-		msecs_to_jiffies(3000));
-	if (!err) {
-		pr_err("%s fail!\n", __func__);
-		return -1;
-	}
+
+//	err = wait_for_completion_timeout(&obj->calibration_done,
+//		msecs_to_jiffies(3000));
+//	if (!err) {
+//		pr_err("%s fail!\n", __func__);
+//		return -1;
+//	}
 	spin_lock(&calibration_lock);
 	data[GYROHUB_AXIS_X] = obj->static_cali[GYROHUB_AXIS_X];
 	data[GYROHUB_AXIS_Y] = obj->static_cali[GYROHUB_AXIS_Y];
@@ -644,7 +649,7 @@ static int gyrohub_factory_get_cali(int32_t data[3])
 		return -2;
 	}
 #endif
-	return err;
+	return 0;
 }
 static int gyrohub_factory_do_self_test(void)
 {
@@ -871,7 +876,7 @@ static int gyrohub_probe(struct platform_device *pdev)
 	WRITE_ONCE(obj->factory_enable, false);
 	WRITE_ONCE(obj->android_enable, false);
 	INIT_WORK(&obj->init_done_work, scp_init_work_done);
-	init_completion(&obj->calibration_done);
+//	init_completion(&obj->calibration_done);
 	init_completion(&obj->selftest_done);
 
 	err = gpio_config();

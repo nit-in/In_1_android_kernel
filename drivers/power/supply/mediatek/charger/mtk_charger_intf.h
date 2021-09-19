@@ -1,5 +1,6 @@
 /*
  * Copyright (C) 2016 MediaTek Inc.
+ * Copyright (C) 2021 XiaoMi, Inc.
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License version 2 as
@@ -22,6 +23,8 @@
 #include <linux/timer.h>
 #include <linux/wait.h>
 #include <linux/alarmtimer.h>
+#include <linux/kthread.h>
+#include <linux/power_supply.h>
 #include <mt-plat/charger_type.h>
 #include <mt-plat/mtk_charger.h>
 #include <mt-plat/mtk_battery.h>
@@ -31,16 +34,13 @@
 #include <mt-plat/charger_class.h>
 
 struct charger_manager;
+struct charger_data;
 #include "mtk_pe_intf.h"
 #include "mtk_pe20_intf.h"
 #include "mtk_pe40_intf.h"
-#ifdef CONFIG_MTK_PUMP_EXPRESS_PLUS_50_SUPPORT
-/*prize-huangjiwu-20200730, add for rt9759 pe50 start*/
-#include "mtk_pe50_intf.h"
-/*prize-huangjiwu-20200730, add for rt9759 pe50 end*/
-#endif
 #include "mtk_pdc_intf.h"
 #include "adapter_class.h"
+#include "mtk_smartcharging.h"
 
 #define CHARGING_INTERVAL 10
 #define CHARGING_FULL_INTERVAL 20
@@ -82,13 +82,7 @@ do {								\
 #define	CHR_PE40_TUNING	(0x0009)
 #define	CHR_PE40_POSTCC	(0x000A)
 #define CHR_PE30	(0x000B)
-#ifdef CONFIG_MTK_PUMP_EXPRESS_PLUS_50_SUPPORT
-/*prize-huangjiwu-20200730, add for rt9759 pe50 start*/
-#define CHR_PE50_READY	(0x000E)
-#define CHR_PE50_RUNNING	(0x000F)
-#define CHR_PE50	(0x0010)
-/*prize-huangjiwu-20200730, add for rt9759 pe50 end*/
-#endif
+
 /* charging abnormal status */
 #define CHG_VBUS_OV_STATUS	(1 << 0)
 #define CHG_BAT_OT_STATUS	(1 << 1)
@@ -98,6 +92,30 @@ do {								\
 #define CHG_BAT_LT_STATUS	(1 << 5)
 #define CHG_TYPEC_WD_STATUS	(1 << 6)
 
+/* HVDCP type */
+enum hvdcp_status{
+	HVDCP_NULL,
+	HVDCP,
+	HVDCP_3,
+};
+
+enum hvdcp3_type {
+	HVDCP3_NONE = 0,
+	HVDCP3_CLASSA_18W,
+	HVDCP3_CLASSB_27W,
+	USB_PD,
+	HVDCP2_TYPE,
+};
+
+/*wireless charger type*/
+enum wireless_chg_state {
+	WIRELESS_NULL = 0,
+	WIRELESS_SDP,
+	WIRELESS_CDP,
+	WIRELESS_CHG_CDP,
+	WIRELESS_CHG_DCP,
+	WIRELESS_CHG_HVDCP,
+};
 /* charger_algorithm notify charger_dev */
 enum {
 	EVENT_EOC,
@@ -111,17 +129,6 @@ enum {
 	CHARGER_DEV_NOTIFY_EOC,
 	CHARGER_DEV_NOTIFY_RECHG,
 	CHARGER_DEV_NOTIFY_SAFETY_TIMEOUT,
-#ifdef CONFIG_MTK_PUMP_EXPRESS_PLUS_50_SUPPORT
-/*prize-huangjiwu-20200730, add for rt9759 pe50 start*/
-	CHARGER_DEV_NOTIFY_VBATOVP_ALARM,
-	CHARGER_DEV_NOTIFY_VBUSOVP_ALARM,
-	CHARGER_DEV_NOTIFY_IBATOCP,
-	CHARGER_DEV_NOTIFY_IBUSOCP,
-	CHARGER_DEV_NOTIFY_IBUSUCP_FALL,
-	CHARGER_DEV_NOTIFY_VOUTOVP,
-	CHARGER_DEV_NOTIFY_VDROVP,
-/*prize-huangjiwu-20200730, add for rt9759 pe50 end*/
-#endif
 };
 
 /*
@@ -145,6 +152,8 @@ struct sw_jeita_data {
 	int sm;
 	int pre_sm;
 	int cv;
+	int cc;
+	int pre_cv;
 	bool charging;
 	bool error_recovery_flag;
 };
@@ -155,52 +164,6 @@ enum bat_temp_state_enum {
 	BAT_TEMP_NORMAL,
 	BAT_TEMP_HIGH
 };
-
-//prize-add by sunshuai for vestel customer  requires charging to be controlled according to the battery specification 201900724 start
-#if defined(CONFIG_PRIZE_CHARGE_CTRL_VIETNAM)
-enum charge_temperature_state_enum {
-	STEP_INIT = 0,
-	STEP_T1,
-	STEP_T2,
-	STEP_T3
-};
-
-struct battery_temperature_step_charge_data {
-	int current_step;//1: -5-20; 2: 20-45; 3:45-60
-	int start_step1_temp;// -5
-	int start_step2_temp;// 20
-	int start_step3_temp;// 45
-	int end_step3_temp;//60
-	int exit_step3_temp;//40
-    int temp_stp3_cv_voltage;//prize-add by sunshuai for for Vietnam customer  20200106
-};
-#endif
-//prize-add by sunshuai for vestel customer  requires charging to be controlled according to the battery specification 201900724 end
-
-/*prize-add by sunshuai for for gigast customer  20200706 start  */
-#ifdef CONFIG_PRIZE_CHARGE_CURRENT_CTRL_GIGAST
-enum charge_temperature_state_enum {
-	STEP_INIT = 0,
-	STEP_T1,
-	STEP_T2,
-	STEP_T3
-};
-
-struct battery_temperature_step_charge_data {
-	int current_step;//1: -5-15; 2: 15-45; 3:45-55
-	int start_step1_temp;// -5
-	int step1_max_current;
-	int start_step2_temp;// 15
-	int start_step3_temp;// 45
-	int step3_vot1_current;
-	int step3_vot2_current;
-	int enter_step3_battery_percentage;
-    int temp_stp3_cv_voltage;
-};
-#endif
-/*prize-add by sunshuai for for gigast customer  20200706 end  */
-
-
 
 struct battery_thermal_protection_data {
 	int sm;
@@ -236,6 +199,11 @@ struct charger_custom_data {
 	int max_dmivr_charger_current;
 
 	/* sw jeita */
+	int jeita_temp_t3_to_t4_cc;
+	int jeita_temp_t2_to_t3_cc;
+	int jeita_temp_t1_to_t2_cc;
+	int jeita_temp_t0_to_t1_cc;
+
 	int jeita_temp_above_t4_cv;
 	int jeita_temp_t3_to_t4_cv;
 	int jeita_temp_t2_to_t3_cv;
@@ -294,6 +262,8 @@ struct charger_custom_data {
 	u32 pe40_r_cable_3a_lower;
 
 	/* dual charger */
+	u32 chg1_ta_ac_charger_input_current;
+	u32 chg2_ta_ac_charger_input_current;
 	u32 chg1_ta_ac_charger_current;
 	u32 chg2_ta_ac_charger_current;
 	int slave_mivr_diff;
@@ -327,6 +297,7 @@ struct charger_custom_data {
 
 	int vsys_watt;
 	int ibus_err;
+	int set_cap_delay;
 };
 
 struct charger_data {
@@ -359,21 +330,14 @@ struct charger_manager {
 	struct notifier_block chg2_nb;
 	struct charger_data chg2_data;
 
-#ifdef CONFIG_MTK_PUMP_EXPRESS_PLUS_50_SUPPORT
-/*prize-huangjiwu-20200730, add for rt9759 pe50 start*/
-	struct charger_device *dvchg1_dev;
-	struct notifier_block dvchg1_nb;
-	struct charger_data dvchg1_data;
-
-	struct charger_device *dvchg2_dev;
-	struct notifier_block dvchg2_nb;
-	struct charger_data dvchg2_data;
-/*prize-huangjiwu-20200730, add for rt9759 pe50 end*/
-#endif
 	struct adapter_device *pd_adapter;
 
 
 	enum charger_type chr_type;
+	enum hvdcp_status hvdcp_type;
+	enum wireless_chg_state wireless_status;
+	int hvdcp_check_count;
+
 	bool can_charging;
 	int cable_out_cnt;
 
@@ -394,6 +358,7 @@ struct charger_manager {
 
 	/* sw jeita */
 	bool enable_sw_jeita;
+	bool swjeita_enable_dual_charging;
 	struct sw_jeita_data sw_jeita;
 
 	/* dynamic_cv */
@@ -430,14 +395,7 @@ struct charger_manager {
 	/* pe 4.0 */
 	bool enable_pe_4;
 	struct mtk_pe40 pe4;
-#ifdef CONFIG_MTK_PUMP_EXPRESS_PLUS_50_SUPPORT
-/*prize-huangjiwu-20200730, add for rt9759 pe50 start*/
-	/* pe 5.0 */
-	bool enable_pe_5;
-	bool leave_pe5;
-	struct mtk_pe50 pe5;
-/*prize-huangjiwu-20200730, add for rt9759 pe50 end*/
-#endif
+
 	/* type-C*/
 	bool enable_type_c;
 
@@ -448,7 +406,12 @@ struct charger_manager {
 	struct mtk_pdc pdc;
 	bool disable_pd_dual;
 
+	/* Ra Rp detection */
+	bool ra_detected;
+	int	rp_lvl;
+
 	int pd_type;
+	//struct tcpc_device *tcpc;
 	bool pd_reset;
 
 	/* thread related */
@@ -470,16 +433,82 @@ struct charger_manager {
 	bool charger_thread_polling;
 
 	/* kpoc */
-	atomic_t enable_kpoc_shdn;
+	atomic_t  enable_kpoc_shdn;
 
 	/* ATM */
 	bool atm_enabled;
 
 	/* dynamic mivr */
 	bool enable_dynamic_mivr;
-#if defined(CONFIG_PRIZE_CHARGE_CTRL_VIETNAM) || defined(CONFIG_PRIZE_CHARGE_CURRENT_CTRL_GIGAST)
-	struct battery_temperature_step_charge_data step_info;//prize-add by sunshuai for vestel customer  requires charging to be controlled according to the battery specification 201900724
-#endif
+
+	/* input suspend*/
+	bool is_input_suspend;
+
+	struct power_supply	*usb_psy;
+
+	/*delay work*/
+	struct delayed_work	pd_hard_reset_work;
+	/* plug in time*/
+	struct timespec plugintime;
+
+	/*thermal level*/
+	int system_temp_level;
+	int system_temp_level_max;
+
+	struct smartcharging sc;
+
+	/*daemon related*/
+	struct sock *daemo_nl_sk;
+	u_int g_scd_pid;
+	struct scd_cmd_param_t_1 sc_data;
+};
+
+
+struct chg_type_info {
+	struct device *dev;
+	struct charger_consumer *chg_consumer;
+	struct tcpc_device *tcpc_dev;
+	struct notifier_block pd_nb;
+	struct notifier_block otg_nb;
+	bool tcpc_kpoc;
+	/* Charger Detection */
+	struct mutex chgdet_lock;
+	bool chgdet_en;
+	atomic_t chgdet_cnt;
+	wait_queue_head_t waitq;
+	struct kthread_work chgdet_task_threadfn;
+	struct task_struct *chgdet_task;
+	struct workqueue_struct *pwr_off_wq;
+	struct work_struct pwr_off_work;
+	struct workqueue_struct *chg_in_wq;
+	struct work_struct chg_in_work;
+	bool ignore_usb;
+	bool plugin;
+	int cc_orientation;
+	int typec_mode;
+};
+
+/* Power Supply */
+struct mt_charger {
+	struct device *dev;
+	struct power_supply_desc chg_desc;
+	struct power_supply_config chg_cfg;
+	struct power_supply *chg_psy;
+	struct power_supply_desc ac_desc;
+	struct power_supply_config ac_cfg;
+	struct power_supply *ac_psy;
+	struct power_supply_desc usb_desc;
+	struct power_supply_config usb_cfg;
+	struct power_supply *usb_psy;
+	struct power_supply_desc main_desc;
+	struct power_supply_config main_cfg;
+	struct power_supply *main_psy;
+	struct power_supply *parallel_psy;
+	struct chg_type_info *cti;
+	bool chg_online; /* Has charger in or not */
+	enum charger_type chg_type;
+	enum hvdcp_status	hvdcp_type;
+	struct charger_device *chg1_dev;
 };
 
 /* charger related module interface */

@@ -48,7 +48,7 @@ static int debug_fix_boost;
 static int cur_uclamp_min[NR_CGROUP];
 static unsigned long uclamp_policy_mask[NR_CGROUP];
 #endif
-static int uclamp_min[NR_CGROUP][EAS_MAX_KIR];
+static int uclamp_min[NR_CGROUP][EAS_UCLAMP_MAX_KIR];
 static int debug_uclamp_min[NR_CGROUP];
 
 static int cur_schedplus_down_throttle_ns;
@@ -67,6 +67,9 @@ static int default_schedplus_sync_flag;
 static unsigned long schedplus_sync_flag_policy_mask;
 static int schedplus_sync_flag[EAS_SYNC_FLAG_MAX_KIR];
 static int debug_schedplus_sync_flag;
+
+static unsigned long prefer_idle[NR_CGROUP];
+static int debug_prefer_idle[NR_CGROUP];
 
 /* log */
 static int log_enable;
@@ -141,6 +144,11 @@ int update_schedplus_down_throttle_ns(int kicker, int nsec)
 	int i;
 	int final_down_thres = -1;
 
+	if (kicker < 0 || kicker >= EAS_THRES_MAX_KIR) {
+		pr_debug(" kicker:%d error\n", kicker);
+		return -1;
+	}
+
 	mutex_lock(&boost_eas);
 
 	schedplus_down_throttle_ns[kicker] = nsec;
@@ -187,6 +195,11 @@ int update_schedplus_up_throttle_ns(int kicker, int nsec)
 {
 	int i;
 	int final_up_thres = -1;
+
+	if (kicker < 0 || kicker >= EAS_THRES_MAX_KIR) {
+		pr_debug(" kicker:%d error\n", kicker);
+		return -1;
+	}
 
 	mutex_lock(&boost_eas);
 
@@ -235,8 +248,12 @@ int update_schedplus_sync_flag(int kicker, int enable)
 	int i;
 	int final_sync_flag = -1;
 
-	mutex_lock(&boost_eas);
+	if (kicker < 0 || kicker >= EAS_SYNC_FLAG_MAX_KIR) {
+		pr_debug(" kicker:%d error\n", kicker);
+		return -1;
+	}
 
+	mutex_lock(&boost_eas);
 
 	schedplus_sync_flag[kicker] = clamp(enable, -1, 1);
 
@@ -283,14 +300,18 @@ int update_eas_boost_value(int kicker, int cgroup_idx, int value)
 	char msg[LOG_BUF_SIZE];
 	char msg1[LOG_BUF_SIZE];
 
-	mutex_lock(&boost_eas);
-
-	if (cgroup_idx >= NR_CGROUP) {
-		mutex_unlock(&boost_eas);
-		pr_debug(" cgroup_idx >= NR_CGROUP, error\n");
+	if (cgroup_idx >= NR_CGROUP || cgroup_idx < 0) {
+		pr_debug("cgroup_idx:%d, error\n", cgroup_idx);
 		perfmgr_trace_printk("cpu_ctrl", "cgroup_idx >= NR_CGROUP\n");
 		return -1;
 	}
+
+	if (kicker < 0 || kicker >= EAS_MAX_KIR) {
+		pr_debug("kicker:%d error\n", kicker);
+		return -1;
+	}
+
+	mutex_lock(&boost_eas);
 
 	boost_value[cgroup_idx][kicker] = value;
 	len += snprintf(msg + len, sizeof(msg) - len, "[%d] [%d] [%d]",
@@ -369,14 +390,18 @@ int update_eas_uclamp_min(int kicker, int cgroup_idx, int value)
 	char msg[LOG_BUF_SIZE];
 	char msg1[LOG_BUF_SIZE];
 
-	mutex_lock(&boost_eas);
-
-	if (cgroup_idx >= NR_CGROUP) {
-		mutex_unlock(&boost_eas);
-		pr_debug(" cgroup_idx >= NR_CGROUP, error\n");
+	if (cgroup_idx >= NR_CGROUP || cgroup_idx < 0) {
+		pr_debug(" cgroup_idx:%d, error\n", cgroup_idx);
 		perfmgr_trace_printk("uclamp_min", "cgroup_idx >= NR_CGROUP\n");
 		return -1;
 	}
+
+	if (kicker < 0 || kicker >= EAS_UCLAMP_MAX_KIR) {
+		pr_debug(" kicker:%d error\n", kicker);
+		return -1;
+	}
+
+	mutex_lock(&boost_eas);
 
 	uclamp_min[cgroup_idx][kicker] = value;
 	len += snprintf(msg + len, sizeof(msg) - len, "[%d] [%d] [%d]",
@@ -443,6 +468,45 @@ int update_eas_uclamp_min(int kicker, int cgroup_idx, int value)
 }
 #endif
 EXPORT_SYMBOL(update_eas_uclamp_min);
+
+#ifdef CONFIG_SCHED_TUNE
+int update_prefer_idle_value(int kicker, int cgroup_idx, int value)
+{
+	if (cgroup_idx < 0 || cgroup_idx >= NR_CGROUP) {
+		pr_debug("cgroup_idx:%d, error\n", cgroup_idx);
+		return -EINVAL;
+	}
+
+	if (kicker < 0 || kicker >= EAS_PREFER_IDLE_MAX_KIR) {
+		pr_debug("kicker:%d, error\n", kicker);
+		return -EINVAL;
+	}
+
+	mutex_lock(&boost_eas);
+
+	if (value != 0)
+		set_bit(kicker, &prefer_idle[cgroup_idx]);
+	else
+		clear_bit(kicker, &prefer_idle[cgroup_idx]);
+
+	if (debug_prefer_idle[cgroup_idx] == -1) {
+		if (prefer_idle[cgroup_idx] > 0)
+			prefer_idle_for_perf_idx(cgroup_idx, 1);
+		else
+			prefer_idle_for_perf_idx(cgroup_idx, 0);
+	}
+
+	mutex_unlock(&boost_eas);
+
+	return prefer_idle[cgroup_idx];
+}
+#else
+int update_prefer_idle_value(int kicker, int cgroup_idx, int value)
+{
+	return -1;
+}
+#endif
+EXPORT_SYMBOL(update_prefer_idle_value);
 
 /****************/
 static ssize_t perfmgr_perfserv_fg_boost_proc_write(struct file *filp
@@ -606,15 +670,15 @@ static ssize_t perfmgr_boot_boost_proc_write(
 {
 	int cgroup = 0, data = 0;
 
-	int rv = check_boot_boost_proc_write(&cgroup, &data, ubuf, cnt);
+	int rv = check_group_proc_write(&cgroup, &data, ubuf, cnt);
 
 	if (rv != 0)
 		return rv;
 
-	data = check_boost_value(data);
+	data = check_uclamp_value(data);
 
 	if (cgroup >= 0 && cgroup < NR_CGROUP)
-		update_eas_boost_value(EAS_KIR_BOOT, cgroup, data);
+		update_eas_uclamp_min(EAS_UCLAMP_KIR_BOOT, cgroup, data);
 
 	return cnt;
 }
@@ -624,7 +688,7 @@ static int perfmgr_boot_boost_proc_show(struct seq_file *m, void *v)
 	int i;
 
 	for (i = 0; i < NR_CGROUP; i++)
-		seq_printf(m, "%d\n", boost_value[i][EAS_KIR_BOOT]);
+		seq_printf(m, "%d\n", uclamp_min[i][EAS_UCLAMP_KIR_BOOT]);
 
 	return 0;
 }
@@ -1253,6 +1317,96 @@ static int perfmgr_perfmgr_log_proc_show(struct seq_file *m, void *v)
 	return 0;
 }
 
+static int perfmgr_current_prefer_idle_proc_show(struct seq_file *m, void *v)
+{
+	int i;
+
+	for (i = 0; i < NR_CGROUP; i++)
+		seq_printf(m, "%lx\n", prefer_idle[i]);
+
+	return 0;
+}
+
+static ssize_t perfmgr_perfserv_prefer_idle_proc_write(
+		struct file *filp, const char *ubuf,
+		size_t cnt, loff_t *pos)
+{
+	int cgroup = 0, data = 0;
+
+	int rv = check_group_proc_write(&cgroup, &data, ubuf, cnt);
+
+	if (rv != 0)
+		return rv;
+
+	if (data < 0 || data > 1)
+		return -EINVAL;
+
+	if (cgroup >= 0 && cgroup < NR_CGROUP) {
+		if (data != 0)
+			update_prefer_idle_value(EAS_PREFER_IDLE_KIR_PERF,
+			cgroup, 1);
+		else
+			update_prefer_idle_value(EAS_PREFER_IDLE_KIR_PERF,
+			cgroup, 0);
+	}
+
+	return cnt;
+}
+
+static int perfmgr_perfserv_prefer_idle_proc_show(struct seq_file *m, void *v)
+{
+	int i;
+
+	for (i = 0; i < NR_CGROUP; i++)
+		seq_printf(m, "%d\n",
+		test_bit(EAS_PREFER_IDLE_KIR_PERF, &prefer_idle[i]));
+
+	return 0;
+}
+
+static ssize_t perfmgr_debug_prefer_idle_proc_write(
+		struct file *filp, const char *ubuf,
+		size_t cnt, loff_t *pos)
+{
+	int cgroup = 0, data = 0;
+
+	int rv = check_group_proc_write(&cgroup, &data, ubuf, cnt);
+
+	if (rv != 0)
+		return rv;
+
+	if (data < -1 || data > 1)
+		return -EINVAL;
+
+	if (cgroup >= 0 && cgroup < NR_CGROUP) {
+		debug_prefer_idle[cgroup] = data;
+#if defined(CONFIG_SCHED_TUNE)
+		if (data == 1)
+			prefer_idle_for_perf_idx(cgroup, 1);
+		else if (data == 0)
+			prefer_idle_for_perf_idx(cgroup, 0);
+		else {
+			if (prefer_idle[cgroup] > 0)
+				prefer_idle_for_perf_idx(cgroup, 1);
+			else
+				prefer_idle_for_perf_idx(cgroup, 0);
+		}
+#endif
+	}
+
+	return cnt;
+}
+
+static int perfmgr_debug_prefer_idle_proc_show(struct seq_file *m, void *v)
+{
+	int i;
+
+	for (i = 0; i < NR_CGROUP; i++)
+		seq_printf(m, "%d\n", debug_prefer_idle[i]);
+
+	return 0;
+}
+
 /* boost value */
 PROC_FOPS_RW(perfserv_fg_boost);
 PROC_FOPS_RO(current_fg_boost);
@@ -1285,6 +1439,9 @@ PROC_FOPS_RW(perfserv_schedplus_up_throttle);
 PROC_FOPS_RW(debug_schedplus_up_throttle);
 PROC_FOPS_RW(perfserv_schedplus_sync_flag);
 PROC_FOPS_RW(debug_schedplus_sync_flag);
+PROC_FOPS_RO(current_prefer_idle);
+PROC_FOPS_RW(perfserv_prefer_idle);
+PROC_FOPS_RW(debug_prefer_idle);
 
 /* others */
 PROC_FOPS_RW(perfserv_ext_launch_mon);
@@ -1339,6 +1496,9 @@ int eas_ctrl_init(struct proc_dir_entry *parent)
 		PROC_ENTRY(debug_schedplus_up_throttle),
 		PROC_ENTRY(perfserv_schedplus_sync_flag),
 		PROC_ENTRY(debug_schedplus_sync_flag),
+		PROC_ENTRY(current_prefer_idle),
+		PROC_ENTRY(perfserv_prefer_idle),
+		PROC_ENTRY(debug_prefer_idle),
 
 		/* log */
 		PROC_ENTRY(perfmgr_log),
@@ -1372,6 +1532,8 @@ int eas_ctrl_init(struct proc_dir_entry *parent)
 		current_boost_value[i] = 0;
 		for (j = 0; j < EAS_MAX_KIR; j++)
 			boost_value[i][j] = 0;
+		prefer_idle[i] = 0;
+		debug_prefer_idle[i] = -1;
 	}
 #endif
 

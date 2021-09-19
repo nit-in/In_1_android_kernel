@@ -1,5 +1,6 @@
 /*
  * Copyright (C) 2018 MediaTek Inc.
+ * Copyright (C) 2021 XiaoMi, Inc.
  *
  * This program is free software: you can redistribute it and/or modify
  * it under the terms of the GNU General Public License version 2 as
@@ -29,8 +30,11 @@ enum  {
 extern void (*rsu_cpufreq_notifier_fp)(int cluster_id, unsigned long freq);
 extern void (*rsu_getusage_fp)(__s32 *devusage, __u32 *bwusage, __u32 pid);
 
-int __init rs_usage_init(struct dentry *rs_debugfs_dir,
-			struct proc_dir_entry *hps_dir);
+int __init rs_usage_init(void);
+void __exit rs_usage_exit(void);
+
+extern unsigned int __attribute__((weak)) mt_ppm_userlimit_freq_limit_by_others(
+	unsigned int cluster);
 
 #endif
 

@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: GPL-2.0
 //
 // Copyright (C) 2018 MediaTek Inc.
+// Copyright (C) 2021 XiaoMi, Inc.
 
 #include <linux/module.h>
 #include <linux/kernel.h>
@@ -29,20 +30,11 @@
 #ifdef CONFIG_SND_SOC_TFA9874
 #include "../../codecs/tfa98xx/inc/tfa98xx_ext.h"
 #endif
-/* prize modified by lifenfen, add awinic smartpa aw8898, 20200103 begin */
-#ifdef CONFIG_SND_SOC_AW8898
-#include "../../codecs/aw8898/aw8898.h"
+
+#ifdef CONFIG_SND_SOC_AW87339
+#include "aw87339.h"
 #endif
-/* prize modified by lifenfen, add awinic smartpa aw8898, 20200103 end */
-/* prize modified by wyq, add awinic smartpa aw881xx, 20200103 begin */
-#ifdef CONFIG_SND_SMARTPA_AW881XX
-#include "../../codecs/aw881xx/aw881xx.h"
-#elif defined(CONFIG_SND_SMARTPA_AW88194A_NEW)
-extern int aw881xx_i2c_probe(struct i2c_client *i2c,
-	const struct i2c_device_id *id);
-extern int aw881xx_i2c_remove(struct i2c_client *i2c);
-#endif
-/* prize modified by wyq, add awinic smartpa aw881xx, 20200103 end */
+
 #define MTK_SPK_NAME "Speaker Codec"
 #define MTK_SPK_REF_NAME "Speaker Codec Ref"
 static unsigned int mtk_spk_type;
@@ -78,47 +70,7 @@ static struct mtk_spk_i2c_ctrl mtk_spk_list[MTK_SPK_TYPE_NUM] = {
 		.codec_name = "tfa98xx",
 	},
 #endif /* CONFIG_SND_SOC_MT6660 */
-/* prize modified by lifenfen, add awinic smartpa aw8898, 20200103 begin */
-#ifdef CONFIG_SND_SOC_AW8898
-        [MTK_SPK_AWINIC_AW8898] = {
-                .i2c_probe = aw8898_i2c_probe,
-                .i2c_remove = aw8898_i2c_remove,
-                .codec_dai_name = "aw8898-aif",
-                .codec_name = "aw8898_smartpa",
-        },
-#endif /* CONFIG_SND_SOC_AW8898 */
-/* prize modified by lifenfen, add awinic smartpa aw8898, 20200103 end */
-/* prize modified by wyq, add awinic smartpa aw881xx, 20200103 begin */
-#if defined(CONFIG_SND_SMARTPA_AW881XX) || defined(CONFIG_SND_SMARTPA_AW88194A_NEW)
-        [MTK_SPK_AWINIC_AW881XX] = {
-                .i2c_probe = aw881xx_i2c_probe,
-                .i2c_remove = aw881xx_i2c_remove,
-		#if defined(CONFIG_SND_SOC_AW881XX_STEREO)
-                .codec_dai_name = "aw881xx-aif-l",
-                .codec_name = "aw881xx_smartpa_l",
-		#else
-                .codec_dai_name = "aw881xx-aif",
-                .codec_name = "aw881xx_smartpa",
-		#endif
-        },
-#endif /* CONFIG_SND_SMARTPA_AW881XX */
-/* prize modified by wyq, add awinic smartpa aw881xx, 20200103 end */
 };
-
-/* prize modified by huarui, add awinic smartpa aw881xx, 20200103 begin */
-#if defined(CONFIG_SND_SOC_AW881XX_STEREO)
-static struct snd_soc_dai_link_component aw881xx_stereo_codecs[] = {
-	{
-		.name = "aw881xx_smartpa_l",
-		.dai_name = "aw881xx-aif-l",
-	},
-	{
-		.name = "aw881xx_smartpa_r",
-		.dai_name = "aw881xx-aif-r",
-	},
-};
-#endif
-/* prize modified by huarui, add awinic smartpa aw881xx, 20200103 end */
 
 static int mtk_spk_i2c_probe(struct i2c_client *client,
 			     const struct i2c_device_id *id)
@@ -179,6 +131,138 @@ int mtk_spk_get_i2s_in_type(void)
 }
 EXPORT_SYMBOL(mtk_spk_get_i2s_in_type);
 
+int mtk_ext_spk_get_status(void)
+{
+#ifdef CONFIG_SND_SOC_AW87339
+	return aw87339_spk_status_get();
+#else
+	return 0;
+#endif
+}
+EXPORT_SYMBOL(mtk_ext_spk_get_status);
+
+void mtk_ext_spk_enable(int enable)
+{
+#ifdef CONFIG_SND_SOC_AW87339
+	aw87339_spk_enable_set(enable);
+#endif
+}
+EXPORT_SYMBOL(mtk_ext_spk_enable);
+
+int mtk_spk_update_info(struct snd_soc_card *card,
+			struct platform_device *pdev,
+			int *spk_out_dai_link_idx, int *spk_ref_dai_link_idx,
+			const struct snd_soc_ops *i2s_ops)
+{
+	int ret, i, mck_num;
+	struct snd_soc_dai_link *dai_link;
+	int i2s_out_dai_link_idx = -1;
+	int i2s_in_dai_link_idx = -1;
+
+	/* get spk i2s out number */
+	ret = of_property_read_u32(pdev->dev.of_node,
+				   "mtk_spk_i2s_out", &mtk_spk_i2s_out);
+	if (ret) {
+		mtk_spk_i2s_out = MTK_SPK_I2S_3;
+		dev_err(&pdev->dev,
+			"%s(), get mtk_spk_i2s_out fail, use defalut i2s3\n",
+			__func__);
+	}
+
+	/* get spk i2s in number */
+	ret = of_property_read_u32(pdev->dev.of_node,
+				   "mtk_spk_i2s_in", &mtk_spk_i2s_in);
+	if (ret) {
+		mtk_spk_i2s_in = MTK_SPK_I2S_0;
+		dev_err(&pdev->dev,
+			"%s(), get mtk_spk_i2s_in fail, use defalut i2s0\n",
+			 __func__);
+	}
+
+	if (mtk_spk_i2s_out > MTK_SPK_I2S_TYPE_NUM ||
+	    mtk_spk_i2s_in > MTK_SPK_I2S_TYPE_NUM) {
+		dev_err(&pdev->dev, "%s(), get mtk spk i2s fail\n",
+			__func__);
+		return -ENODEV;
+	}
+
+	/* get spk i2s mck number */
+	ret = of_property_read_u32(pdev->dev.of_node,
+				   "mtk_spk_i2s_mck", &mck_num);
+	if (ret) {
+		mck_num = MTK_SPK_I2S_TYPE_INVALID;
+		dev_warn(&pdev->dev, "%s(), mtk_spk_i2s_mck no use\n",
+			 __func__);
+	}
+
+	/* find dai link of i2s in and i2s out */
+	for (i = 0; i < card->num_links; i++) {
+		dai_link = &card->dai_link[i];
+
+		if (i2s_out_dai_link_idx < 0 &&
+		    strcmp(dai_link->cpu_dai_name, "I2S1") == 0 &&
+		    mtk_spk_i2s_out == MTK_SPK_I2S_1) {
+			i2s_out_dai_link_idx = i;
+		} else if (i2s_out_dai_link_idx < 0 &&
+			   strcmp(dai_link->cpu_dai_name, "I2S3") == 0 &&
+			   mtk_spk_i2s_out == MTK_SPK_I2S_3) {
+			i2s_out_dai_link_idx = i;
+		} else if (i2s_out_dai_link_idx < 0 &&
+			   strcmp(dai_link->cpu_dai_name, "I2S5") == 0 &&
+			   mtk_spk_i2s_out == MTK_SPK_I2S_5) {
+			i2s_out_dai_link_idx = i;
+		}
+
+		if (i2s_in_dai_link_idx < 0 &&
+		    strcmp(dai_link->cpu_dai_name, "I2S0") == 0 &&
+		    (mtk_spk_i2s_in == MTK_SPK_I2S_0 ||
+		     mtk_spk_i2s_in == MTK_SPK_TINYCONN_I2S_0)) {
+			i2s_in_dai_link_idx = i;
+		} else if (i2s_in_dai_link_idx < 0 &&
+			   strcmp(dai_link->cpu_dai_name, "I2S2") == 0 &&
+			   (mtk_spk_i2s_in == MTK_SPK_I2S_2 ||
+			    mtk_spk_i2s_in == MTK_SPK_TINYCONN_I2S_2)) {
+			i2s_in_dai_link_idx = i;
+		}
+
+		if (i2s_out_dai_link_idx >= 0 && i2s_in_dai_link_idx >= 0)
+			break;
+	}
+
+	if (i2s_out_dai_link_idx < 0 || i2s_in_dai_link_idx < 0) {
+		dev_err(&pdev->dev,
+			"%s(), i2s cpu dai name error, i2s_out_dai_link_idx = %d, i2s_in_dai_link_idx = %d",
+			__func__, i2s_out_dai_link_idx, i2s_in_dai_link_idx);
+		return -ENODEV;
+	}
+
+	*spk_out_dai_link_idx = i2s_out_dai_link_idx;
+	*spk_ref_dai_link_idx = i2s_in_dai_link_idx;
+
+	if (mtk_spk_type != MTK_SPK_NOT_SMARTPA) {
+		dai_link = &card->dai_link[i2s_out_dai_link_idx];
+		dai_link->codec_name = NULL;
+		dai_link->codec_dai_name = NULL;
+		if (mck_num == mtk_spk_i2s_out)
+			dai_link->ops = i2s_ops;
+
+		dai_link = &card->dai_link[i2s_in_dai_link_idx];
+		dai_link->codec_name = NULL;
+		dai_link->codec_dai_name = NULL;
+		if (mck_num == mtk_spk_i2s_in)
+			dai_link->ops = i2s_ops;
+	}
+
+	dev_info(&pdev->dev,
+		 "%s(), mtk_spk_type %d, spk_out_dai_link_idx %d, spk_out_dai_link_idx %d, mck: %d\n",
+		 __func__,
+		 mtk_spk_type, *spk_ref_dai_link_idx,
+		 *spk_out_dai_link_idx, mck_num);
+
+	return 0;
+}
+EXPORT_SYMBOL(mtk_spk_update_info);
+
 int mtk_spk_update_dai_link(struct snd_soc_card *card,
 			    struct platform_device *pdev,
 			    const struct snd_soc_ops *i2s_ops)
@@ -221,13 +305,23 @@ int mtk_spk_update_dai_link(struct snd_soc_card *card,
 			 __func__);
 	}
 
+	dev_info(&pdev->dev,
+		 "%s(), mtk_spk_type %d, i2s in %d, i2s out %d\n",
+		 __func__, mtk_spk_type, mtk_spk_i2s_in, mtk_spk_i2s_out);
+
 	if (mtk_spk_i2s_out > MTK_SPK_I2S_TYPE_NUM ||
 	    mtk_spk_i2s_in > MTK_SPK_I2S_TYPE_NUM) {
 		dev_err(&pdev->dev, "%s(), get mtk spk i2s fail\n",
 			__func__);
 		return -ENODEV;
 	}
-
+#ifdef CONFIG_TARGET_PRODUCT_MERLINCOMMON
+	if (mtk_spk_type == MTK_SPK_NOT_SMARTPA) {
+		dev_info(&pdev->dev, "%s(), no need to update dailink\n",
+			 __func__);
+		return 0;
+	}
+#endif
 	/* find dai link of i2s in and i2s out */
 	for (i = 0; i < card->num_links; i++) {
 		dai_link = &card->dai_link[i];
@@ -248,11 +342,13 @@ int mtk_spk_update_dai_link(struct snd_soc_card *card,
 
 		if (spk_ref_dai_link_idx < 0 &&
 		    strcmp(dai_link->cpu_dai_name, "I2S0") == 0 &&
-		    mtk_spk_i2s_in == MTK_SPK_I2S_0) {
+		    (mtk_spk_i2s_in == MTK_SPK_I2S_0 ||
+		     mtk_spk_i2s_in == MTK_SPK_TINYCONN_I2S_0)) {
 			spk_ref_dai_link_idx = i;
 		} else if (spk_ref_dai_link_idx < 0 &&
 			   strcmp(dai_link->cpu_dai_name, "I2S2") == 0 &&
-			   mtk_spk_i2s_in == MTK_SPK_I2S_2) {
+			   (mtk_spk_i2s_in == MTK_SPK_I2S_2 ||
+			    mtk_spk_i2s_in == MTK_SPK_TINYCONN_I2S_2)) {
 			spk_ref_dai_link_idx = i;
 		}
 
@@ -270,19 +366,10 @@ int mtk_spk_update_dai_link(struct snd_soc_card *card,
 	/* update spk codec dai name and codec name */
 	dai_link = &card->dai_link[spk_dai_link_idx];
 	dai_link->name = MTK_SPK_NAME;
-/* prize modified by huarui, add awinic smartpa aw881xx, 20200103 begin */
-#if defined(CONFIG_SND_SOC_AW881XX_STEREO)
-	dai_link->num_codecs = 2;
-	dai_link->codecs = aw881xx_stereo_codecs;
-	dai_link->codec_dai_name = NULL;
-	dai_link->codec_name = NULL;
-#else
 	dai_link->codec_dai_name =
 		mtk_spk_list[mtk_spk_type].codec_dai_name;
 	dai_link->codec_name =
 		mtk_spk_list[mtk_spk_type].codec_name;
-#endif
-/* prize modified by huarui, add awinic smartpa aw881xx, 20200103 end */
 	dai_link->ignore_pmdown_time = 1;
 	if (i2s_mck == mtk_spk_i2s_out)
 		dai_link->ops = i2s_ops;

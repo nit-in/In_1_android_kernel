@@ -10,8 +10,6 @@
  * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
  * See http://www.gnu.org/licenses/gpl-2.0.html for more details.
  */
-#ifdef CONFIG_MTK_PUMP_EXPRESS_PLUS_50_SUPPORT
-/*prize-huangjiwu-20200730, add for rt9759 pe50 start*/
 
 #include <linux/init.h>
 #include <linux/module.h>
@@ -66,20 +64,9 @@ static struct apdo_pps_range apdo_pps_tbl[] = {
 
 static inline int check_typec_attached_snk(struct tcpc_device *tcpc)
 {
-/*prize add by sunshuai for A-C 30w charge 20201109-start */
-#ifdef CONFIG_PRIZE_ATOC_TYPEC_CHARGE
-	int typec_state = tcpm_inquire_typec_attach_state(tcpc);
-	
-    PCA_DBG("check_typec_attached_snk typec_state = %d  TYPEC_ATTACHED_DBGACC_SNK =%d  TYPEC_ATTACHED_SNK =%d\n", typec_state,TYPEC_ATTACHED_DBGACC_SNK,TYPEC_ATTACHED_SNK);
-	if ((typec_state != TYPEC_ATTACHED_SNK) && (typec_state != TYPEC_ATTACHED_DBGACC_SNK))
-		return -EINVAL;
-	return 0;
-#else
 	if (tcpm_inquire_typec_attach_state(tcpc) != TYPEC_ATTACHED_SNK)
 		return -EINVAL;
 	return 0;
-#endif
-/*prize add by sunshuai for A-C 30w charge 20201109-end */
 }
 
 static int pca_pps_enable_charging(struct prop_chgalgo_device *pca, bool en,
@@ -257,8 +244,8 @@ static int pca_pps_authenticate_ta(struct prop_chgalgo_device *pca,
 {
 	int ret, apdo_idx = -1, i;
 	struct pca_pps_info *info = prop_chgalgo_get_drvdata(pca);
-	struct tcpm_power_cap_val apdo_cap = {0};
-	struct tcpm_power_cap_val selected_apdo_cap = {0};
+	struct tcpm_power_cap_val apdo_cap;
+	struct tcpm_power_cap_val selected_apdo_cap;
 	struct pd_source_cap_ext src_cap_ext;
 	struct prop_chgalgo_ta_status ta_status;
 	u8 cap_idx;
@@ -387,7 +374,7 @@ static int pca_pps_set_wdt(struct prop_chgalgo_device *pca, u32 ms)
 	return 0;
 }
 
-static struct prop_chgalgo_desc pca_pps_desc = {
+static struct prop_chgalgo_desc pca_ta_pps_desc = {
 	.name = "pca_ta_pps",
 	.type = PCA_DEVTYPE_TA,
 };
@@ -490,7 +477,7 @@ static int pca_pps_probe(struct platform_device *pdev)
 		return ret;
 	}
 
-	info->pca = prop_chgalgo_device_register(info->dev, &pca_pps_desc,
+	info->pca = prop_chgalgo_device_register(info->dev, &pca_ta_pps_desc,
 						 &pca_pps_ops, NULL, NULL,
 						 info);
 	if (!info->pca) {
@@ -545,8 +532,6 @@ MODULE_DESCRIPTION("Programmable Power Supply TA For PCA");
 MODULE_AUTHOR("ShuFan Lee<shufan_lee@richtek.com>");
 MODULE_VERSION(PCA_PPS_TA_VERSION);
 MODULE_LICENSE("GPL");
-/*prize-huangjiwu-20200730, add for rt9759 pe50 end*/
-#endif
 
 /*
  * 1.0.7_G

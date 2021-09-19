@@ -1,5 +1,6 @@
 /*
  * Copyright (C) 2016 MediaTek Inc.
+ * Copyright (C) 2021 XiaoMi, Inc.
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License version 2 as
@@ -1161,6 +1162,7 @@ static void ppm_limit_callback(struct ppm_client_req req)
 			cpuhvfs_set_min_max(i,
 				ppm->cpu_limit[i].min_cpufreq_idx,
 				ppm->cpu_limit[i].max_cpufreq_idx);
+		cpuhvfs_write_advise_freq(i, ppm->cpu_limit[i].has_advise_freq);
 	}
 #else
 	unsigned long flags;
@@ -1381,7 +1383,12 @@ static struct freq_attr *_mt_cpufreq_attr[] = {
 };
 
 static struct cpufreq_driver _mt_cpufreq_driver = {
+#if defined(CONFIG_MTK_PLAT_MT6885_EMULATION) || defined(CONFIG_MACH_MT6893) \
+	|| defined(CONFIG_MACH_MT6833)
+	.flags = CPUFREQ_ASYNC_NOTIFICATION | CPUFREQ_HAVE_GOVERNOR_PER_POLICY,
+#else
 	.flags = CPUFREQ_ASYNC_NOTIFICATION,
+#endif
 	.verify = _mt_cpufreq_verify,
 	.target = _mt_cpufreq_target,
 	.init = _mt_cpufreq_init,
@@ -1660,16 +1667,20 @@ static int _mt_cpufreq_pdrv_probe(struct platform_device *pdev)
 	cpufreq_procfs_init();
 	_mt_cpufreq_aee_init();
 
+	ret = mt_cpufreq_regulator_map(pdev);
+	if (ret)
+		tag_pr_notice("%s regulator map fail\n", __func__);
+
 #ifdef CONFIG_HYBRID_CPU_DVFS
-	/* For SSPM probe */
+#ifdef INIT_MCUPM_VOLTAGE_SETTING
+	cpuhvfs_set_init_volt();
+#endif
+	/* For SSPM/MCUPM probe */
 	cpuhvfs_set_init_sta();
 	/* Default disable schedule assist DVFS */
 	cpuhvfs_set_sched_dvfs_disable(1);
 #endif
 
-	ret = mt_cpufreq_regulator_map(pdev);
-	if (ret)
-		tag_pr_notice("regulator map fail\n");
 
 	/* Prepare OPP table for PPM in probe to avoid nested lock */
 	for_each_cpu_dvfs(j, p) {
@@ -1770,6 +1781,7 @@ static struct platform_driver _mt_cpufreq_pdrv = {
 };
 
 /* Module driver */
+extern unsigned long cpufreq_max_freq;
 static int __init _mt_cpufreq_tbl_init(void)
 {
 	unsigned int lv = _mt_cpufreq_get_cpu_level();
@@ -1806,6 +1818,8 @@ static int __init _mt_cpufreq_tbl_init(void)
 				table[i].driver_data = i;
 				table[i].frequency =
 				opp_tbl_info->opp_tbl[i].cpufreq_khz;
+				if (cpufreq_max_freq < table[i].frequency)
+					cpufreq_max_freq = table[i].frequency;
 			}
 
 			table[opp_tbl_info->size].driver_data = i;

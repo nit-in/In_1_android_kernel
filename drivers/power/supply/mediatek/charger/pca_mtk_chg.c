@@ -10,8 +10,6 @@
  * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
  * See http://www.gnu.org/licenses/gpl-2.0.html for more details.
  */
-#ifdef CONFIG_MTK_PUMP_EXPRESS_PLUS_50_SUPPORT
-/*prize-huangjiwu-20200730, add for rt9759 pe50 start*/
 
 #include <linux/init.h>
 #include <linux/module.h>
@@ -475,8 +473,6 @@ MODULE_DESCRIPTION("MTK Charger Interface for PCA");
 MODULE_AUTHOR("ShuFan Lee <shufan_lee@richtek.com>");
 MODULE_VERSION(PCA_MTK_CHG_VERSION);
 MODULE_LICENSE("GPL");
-/*prize-huangjiwu-20200730, add for rt9759 pe50 end*/
-#endif
 
 /*
  * Revision Note

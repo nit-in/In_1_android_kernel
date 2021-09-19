@@ -10,8 +10,6 @@
  * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
  * See http://www.gnu.org/licenses/gpl-2.0.html for more details.
  */
-#ifdef CONFIG_MTK_PUMP_EXPRESS_PLUS_50_SUPPORT
-/*prize-huangjiwu-20200730, add for rt9759 pe50 start*/
 
 #include <linux/init.h>
 #include <linux/module.h>
@@ -576,7 +574,7 @@ prop_chgalgo_device_register(struct device *parent,
 	pca->dev.release = pca_device_release;
 	dev_set_drvdata(&pca->dev, pca);
 	pca->drv_data = drv_data;
-	dev_set_name(&pca->dev, pca_desc->name);
+	dev_set_name(&pca->dev, "%s", pca_desc->name);
 	pca->desc = pca_desc;
 	pca->ta_ops = ta_ops;
 	pca->chg_ops = chg_ops;
@@ -664,8 +662,6 @@ MODULE_DESCRIPTION("Proprietary Charging Algorithm Class");
 MODULE_AUTHOR("ShuFan Lee <shufan_lee@richtek.com>");
 MODULE_VERSION(PROP_CHGALGO_CLASS_VERSION);
 MODULE_LICENSE("GPL");
-/*prize-huangjiwu-20200730, add for rt9759 pe50 end*/
-#endif
 
 /*
  * Revision Note

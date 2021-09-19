@@ -529,6 +529,7 @@ int mmc_run_queue_thread(void *data)
 				mmc_check_write(host, done_mrq);
 				host->cur_rw_task = CQ_TASK_IDLE;
 				is_done = true;
+				mmc_complete_mqr_crypto(host);
 
 				if (atomic_read(&host->cq_tuning_now) == 1) {
 					mmc_restore_tasks(host);
@@ -554,6 +555,12 @@ int mmc_run_queue_thread(void *data)
 				atomic_set(&host->cq_rw, true);
 				task_id = ((dat_mrq->cmd->arg >> 16) & 0x1f);
 				host->cur_rw_task = task_id;
+				err = mmc_swcq_prepare_mqr_crypto(host,
+					dat_mrq);
+				if (err) {
+					pr_info("eMMC crypto fail %d\n", err);
+					WARN_ON(1);
+				}
 				host->ops->request(host, dat_mrq);
 				mt_biolog_cmdq_dma_start(task_id);
 				atomic_dec(&host->cq_rdy_cnt);
@@ -2083,11 +2090,14 @@ int mmc_execute_tuning(struct mmc_card *card)
 
 	err = host->ops->execute_tuning(host, opcode);
 
-	if (err)
+	if (err) {
 		pr_err("%s: tuning execution failed: %d\n",
 			mmc_hostname(host), err);
-	else
+	} else {
+		host->retune_now = 0;
+		host->need_retune = 0;
 		mmc_retune_enable(host);
+	}
 
 	return err;
 }
@@ -2597,7 +2607,7 @@ int mmc_set_uhs_voltage(struct mmc_host *host, u32 ocr)
 
 	err = mmc_wait_for_cmd(host, &cmd, 0);
 	if (err)
-		return err;
+		goto power_cycle;
 
 	if (!mmc_host_is_spi(host) && (cmd.resp[0] & R1_ERROR))
 		return -EIO;

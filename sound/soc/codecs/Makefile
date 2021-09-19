@@ -43,6 +43,8 @@ snd-soc-cs35l32-objs := cs35l32.o
 snd-soc-cs35l33-objs := cs35l33.o
 snd-soc-cs35l34-objs := cs35l34.o
 snd-soc-cs35l35-objs := cs35l35.o
+snd-soc-cs35l41-objs := cs35l41.o cs35l41-tables.o
+snd-soc-cs35l41-spi-objs := cs35l41-spi.o
 snd-soc-cs42l42-objs := cs42l42.o
 snd-soc-cs42l51-objs := cs42l51.o
 snd-soc-cs42l51-i2c-objs := cs42l51-i2c.o
@@ -291,6 +293,10 @@ obj-$(CONFIG_SND_SOC_CS35L32)	+= snd-soc-cs35l32.o
 obj-$(CONFIG_SND_SOC_CS35L33)	+= snd-soc-cs35l33.o
 obj-$(CONFIG_SND_SOC_CS35L34)	+= snd-soc-cs35l34.o
 obj-$(CONFIG_SND_SOC_CS35L35)	+= snd-soc-cs35l35.o
+obj-$(CONFIG_SND_SOC_CS35L41)	+= snd-soc-cs35l41.o
+#obj-y	+= snd-soc-cs35l41.o
+obj-$(CONFIG_SND_SOC_CS35L41_SPI)	+= snd-soc-cs35l41-spi.o
+#obj-y	+= snd-soc-cs35l41-spi.o
 obj-$(CONFIG_SND_SOC_CS42L42)	+= snd-soc-cs42l42.o
 obj-$(CONFIG_SND_SOC_CS42L51)	+= snd-soc-cs42l51.o
 obj-$(CONFIG_SND_SOC_CS42L51_I2C)	+= snd-soc-cs42l51-i2c.o
@@ -420,6 +426,7 @@ obj-$(CONFIG_SND_SOC_TLV320AIC32X4_I2C)	+= snd-soc-tlv320aic32x4-i2c.o
 obj-$(CONFIG_SND_SOC_TLV320AIC32X4_SPI)	+= snd-soc-tlv320aic32x4-spi.o
 obj-$(CONFIG_SND_SOC_TLV320AIC3X)	+= snd-soc-tlv320aic3x.o
 obj-$(CONFIG_SND_SOC_TLV320DAC33)	+= snd-soc-tlv320dac33.o
+obj-$(CONFIG_SND_SOC_TLV320WN)	+= tlv320wn.o
 obj-$(CONFIG_SND_SOC_TS3A227E)	+= snd-soc-ts3a227e.o
 obj-$(CONFIG_SND_SOC_TWL4030)	+= snd-soc-twl4030.o
 obj-$(CONFIG_SND_SOC_TWL6040)	+= snd-soc-twl6040.o
@@ -481,6 +488,7 @@ obj-$(CONFIG_SND_SOC_WM9705)	+= snd-soc-wm9705.o
 obj-$(CONFIG_SND_SOC_WM9712)	+= snd-soc-wm9712.o
 obj-$(CONFIG_SND_SOC_WM9713)	+= snd-soc-wm9713.o
 obj-$(CONFIG_SND_SOC_WM_ADSP)	+= snd-soc-wm-adsp.o
+obj-y	+= snd-soc-wm-adsp.o
 obj-$(CONFIG_SND_SOC_WM_HUBS)	+= snd-soc-wm-hubs.o
 obj-$(CONFIG_SND_SOC_ZX_AUD96P22) += snd-soc-zx-aud96p22.o
 obj-$(CONFIG_SND_SOC_TFA9874)	+= tfa98xx/
@@ -492,21 +500,8 @@ obj-$(CONFIG_SND_SOC_MAX98504)	+= snd-soc-max98504.o
 obj-$(CONFIG_SND_SOC_TPA6130A2)	+= snd-soc-tpa6130a2.o
 obj-$(CONFIG_SND_SOC_RT5509)	+= snd-soc-rt5509.o
 obj-$(CONFIG_SND_SOC_MT6660)	+= snd-soc-mt6660.o
-# prize modified by lifenfen, add awinic smartpa aw8898, 20200103 begin
-obj-$(CONFIG_SND_SOC_AW8898)    += aw8898/
-# prize modified by lifenfen, add awinic smartpa aw8898, 20200103 end
-# prize modified by wyq, add awinic smartpa aw881xx, 20200103 begin
-obj-$(CONFIG_SND_SMARTPA_AW881XX)    += aw881xx/
-# prize modified by wyq, add awinic smartpa aw881xx, 20200103 end
-# prize modified by liaoxingen, add awinic smartpa aw881xx, 20200601 begin
-obj-$(CONFIG_SND_SMARTPA_AW88194A_NEW)    += aw88194a/
-# prize modified by liaoxingen, add awinic smartpa aw881xx, 20200601 end 
-# prize add by huarui, add foursemi smartpa fs1894u, 20200103 begin
-obj-$(CONFIG_SND_SOC_FS16XX)    += foursemi/
-# prize add by huarui, add foursemi smartpa fs1894u, 20200103 end
-# prize add by huarui, add igo ig1202 codec, 20200103 begin
-obj-$(CONFIG_SND_SOC_DEBUSSY)    += debussy/
-# prize add by huarui, add igo ig1202 codec, 20200103 end
+obj-$(CONFIG_SND_SOC_AW87339)	+= aw87339/
+
 ifeq ($(CONFIG_SND_SOC_MT6358),y)
   MTK_PLATFORM := $(subst ",,$(CONFIG_MTK_PLATFORM))
   subdir-ccflags-y += -Werror -I$(srctree)/drivers/misc/mediatek/include/mt-plat/$(MTK_PLATFORM)/include

@@ -2,6 +2,7 @@
  * MUSB OTG driver peripheral support
  *
  * Copyright 2005 Mentor Graphics Corporation
+ * Copyright (C) 2021 XiaoMi, Inc.
  * Copyright (C) 2005-2006 by Texas Instruments
  * Copyright (C) 2006-2007 Nokia Corporation
  * Copyright (C) 2009 MontaVista Software, Inc. <source@mvista.com>
@@ -3109,13 +3110,12 @@ void musb_g_reset(struct musb *musb)
 	if (!musb->usb_lock.active)
 		__pm_stay_awake(&musb->usb_lock);
 
-	musb_platform_reset(musb);
-	musb_generic_disable(musb);
-
+	/* re-init interrupt setting */
+	musb->intrrxe = 0;
+	musb_writew(mbase, MUSB_INTRRXE, musb->intrrxe);
 	musb->intrtxe = 0x1;
-	musb_writew(mbase, MUSB_INTRTXE,
-					musb->intrtxe);
-		/* enable ep0 interrupt */
+	musb_writew(mbase, MUSB_INTRTXE, musb->intrtxe);
+
 	musb_writeb(mbase, MUSB_INTRUSBE,
 					MUSB_INTR_SUSPEND
 					| MUSB_INTR_RESUME

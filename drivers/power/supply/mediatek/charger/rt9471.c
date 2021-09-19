@@ -39,8 +39,6 @@
 #include "rt9471.h"
 #define RT9471_DRV_VERSION	"1.0.14_MTK"
 
-extern int is_chg2_exist;
-
 enum rt9471_stat_idx {
 	RT9471_STATIDX_STAT0 = 0,
 	RT9471_STATIDX_STAT1,
@@ -2189,12 +2187,11 @@ static int rt9471_reset_register(struct rt9471_chip *chip)
 static bool rt9471_check_devinfo(struct rt9471_chip *chip)
 {
 	int ret = 0;
-	is_chg2_exist = 0;
 
 	ret = i2c_smbus_read_byte_data(chip->client, RT9471_REG_INFO);
 	if (ret < 0) {
-		dev_notice(chip->dev, "%s get devinfo fail(%d)  is_chg2_exist =%d\n",
-				      __func__, ret,is_chg2_exist);
+		dev_notice(chip->dev, "%s get devinfo fail(%d)\n",
+				      __func__, ret);
 		return false;
 	}
 	chip->dev_id = (ret & RT9471_DEVID_MASK) >> RT9471_DEVID_SHIFT;
@@ -2203,16 +2200,15 @@ static bool rt9471_check_devinfo(struct rt9471_chip *chip)
 	case RT9470D_DEVID:
 	case RT9471_DEVID:
 	case RT9471D_DEVID:
-		is_chg2_exist = 1;
 		break;
 	default:
-		dev_notice(chip->dev, "%s incorrect devid 0x%02X  is_chg2_exist=%d\n",
-				      __func__, chip->dev_id,is_chg2_exist);
+		dev_notice(chip->dev, "%s incorrect devid 0x%02X\n",
+				      __func__, chip->dev_id);
 		return false;
 	}
 	chip->dev_rev = (ret & RT9471_DEVREV_MASK) >> RT9471_DEVREV_SHIFT;
-	dev_info(chip->dev, "%s id = 0x%02X, rev = 0x%02X  is_chg2_exist=%d\n",
-			    __func__, chip->dev_id, chip->dev_rev,is_chg2_exist);
+	dev_info(chip->dev, "%s id = 0x%02X, rev = 0x%02X\n",
+			    __func__, chip->dev_id, chip->dev_rev);
 
 	return true;
 }
@@ -2935,7 +2931,8 @@ static int rt9471_probe(struct i2c_client *client,
 #endif /* CONFIG_MTK_EXTERNAL_CHARGER_TYPE_DETECT */
 	chip->chg_done_once = false;
 	chip->buck_dwork_ws =
-		wakeup_source_register(devm_kasprintf(chip->dev, GFP_KERNEL,
+		wakeup_source_register(chip->dev,
+				       devm_kasprintf(chip->dev, GFP_KERNEL,
 				       "rt9471_buck_dwork_ws.%s",
 				       dev_name(chip->dev)));
 	INIT_DELAYED_WORK(&chip->buck_dwork, rt9471_buck_dwork_handler);
@@ -2976,7 +2973,8 @@ static int rt9471_probe(struct i2c_client *client,
 #ifdef CONFIG_MTK_EXTERNAL_CHARGER_TYPE_DETECT
 	if (chip->dev_id == RT9470D_DEVID || chip->dev_id == RT9471D_DEVID) {
 		chip->bc12_en_ws =
-			wakeup_source_register(devm_kasprintf(chip->dev,
+			wakeup_source_register(chip->dev,
+					       devm_kasprintf(chip->dev,
 					       GFP_KERNEL,
 					       "rt9471_bc12_en_ws.%s",
 					       dev_name(chip->dev)));

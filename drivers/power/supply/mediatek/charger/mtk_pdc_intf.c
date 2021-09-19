@@ -1,5 +1,6 @@
 /*
  * Copyright (C) 2016 MediaTek Inc.
+ * Copyright (C) 2021 XiaoMi, Inc.
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License version 2 as
@@ -127,13 +128,7 @@ static bool mtk_is_pdc_ready(struct charger_manager *info)
 		return true;
 
 	if (info->pd_type == MTK_PD_CONNECT_PE_READY_SNK_APDO &&
-		info->enable_pe_4 == false 
-		#ifdef CONFIG_MTK_PUMP_EXPRESS_PLUS_50_SUPPORT
-/*prize-huangjiwu-20200730, add for rt9759 pe50 start*/
-		&&info->enable_pe_5 == false
-/*prize-huangjiwu-20200730, add for rt9759 pe50 end*/
-		#endif
-		)
+		info->enable_pe_4 == false)
 		return true;
 
 	return false;
@@ -442,7 +437,7 @@ int mtk_pdc_get_setting(struct charger_manager *info, int *newvbus, int *newcur,
 	int ibat = 0, chg1_ibat = 0, chg2_ibat = 0;
 	int chg2_watt = 0;
 	bool boost = false, buck = false;
-	struct adapter_power_cap *cap;
+	struct adapter_power_cap *cap = NULL;
 	unsigned int mivr1 = 0;
 	unsigned int mivr2 = 0;
 	bool chg1_mivr = false;

@@ -1,5 +1,6 @@
 /*
  * Copyright (C) 2015 MediaTek Inc.
+ * Copyright (C) 2021 XiaoMi, Inc.
  *
  * This program is free software: you can redistribute it and/or modify
  * it under the terms of the GNU General Public License version 2 as
@@ -28,78 +29,33 @@ enum LCM_DSI_MODE_CON lcm_dsi_mode;
 #define LCD_HW_ID_STATUS_ERROR  0x03
 
 struct LCM_DRIVER *lcm_driver_list[] = {
-//prize-add-pengzhipeng-20200916-start
-#if defined(TD4321_FHDP_DSI_VDO_AUO)
-	&td4321_fhdp_dsi_vdo_auo_drv,
+#if defined(FT8719_FHDP_DSI_VDO_HUAXING_J19)
+	&ft8719_fhdp_dsi_vdo_huaxing_j19_lcm_drv,
 #endif
-//prize-add-pengzhipeng-20200916-end
+#if defined(NT36672A_FHDP_DSI_VDO_TIANMA_J19)
+	&nt36672A_fhdp_dsi_vdo_tianma_j19_lcm_drv,
+#endif
+#if defined(NT36672A_FHDP_DSI_VDO_DIJING_J19)
+	&nt36672A_fhdp_dsi_vdo_dijing_j19_lcm_drv,
+#endif
+#if defined(NT36672D_FHDP_DSI_VDO_DIJING_J19)
+	&nt36672D_fhdp_dsi_vdo_dijing_j19_lcm_drv,
+#endif
+#if defined(NT36672A_FHDP_DSI_VDO_TIANMA_G6)
+	&nt36672A_fhdp_dsi_vdo_tianma_lcm_drv_G6,
+#endif
+#if defined(FT8719_FHDP_DSI_VDO_XINLI)
+	&ft8719_fhdp_dsi_vdo_xinli_lcm_drv,
+#endif
+#if defined(NT36672A_FHDP_DSI_VDO_TIANMA)
+	&nt36672A_fhdp_dsi_vdo_tianma_lcm_drv,
+#endif
+#if defined(NT36672D_FHDP_DSI_VDO_TIANMA)
+    &nt36672D_fhdp_dsi_vdo_tianma_lcm_drv,
+#endif
 #if defined(ES6311_ANX6585_ZIGZAG_WXGA)
 	&es6311_anx6585_zigzag_wxga_lcm_drv,
 #endif
-/*prize-add lcm ili9881p-tangcong-20191009-start*/
-//prize add by lipengpeng 20200706 start
-#if defined(ILI9881P_HD_DSI_VDO_CMI_ATA)
-	&ili9881p_hd_dsi_vdo_cmi_ata_lcm_drv,
-#endif
-//prize add by lipengpeng 20200706 start
-
-//prize add by lipengpeng 20200706 start
-#if defined(NL9911_FHDP_DSI_VDO_INCELL)
-	&nl9911_fhdp_dsi_vdo_incell_lcm_drv,
-#endif
-//prize add by lipengpeng 20200706 start
-
-/*prize-add lcm ili9881p-tangcong-20191009-end*/
-#if defined(FT8006P_HDP_DSI_VDO_BOE_DRIP_INCELL)
-	&ft8006p_hdp_dsi_vdo_boe_drip_incell_lcm_drv,
-#endif
-
-/*prize-add lcm g9503v-huarui-20191009-start*/
-#if defined(GC9503V_FWVGA_DSI_HSD)
-	&gc9503v_fwvga_dsi_hsd_lcm_drv,
-#endif
-#if defined(ST7701S_WVGA_DSI_VDO_BOE31)
-	&st7701s_wvga_dsi_vdo_boe31_lcm_drv,
-#endif
-/*prize-add lcm g9503v-huarui-20191009-end*/
-#if defined(TD4320_FHDP_DSI_VDO_AUO64)
-	&td4320_fhdp_dsi_vdo_auo64_lcm_drv,
-#endif
-#if defined(TD4330_FHDP_DSI_VDO_AUO)
-	&td4330_fhdp_dsi_vdo_auo_drv,
-#endif
-
-#if defined(R63417_FHD_DSI_CMD_SHARP55)
-	&r63417_fhd_dsi_cmd_sharp55_lcm_drv,
-#endif
-//prize add by lipengpeng 20191223 start
-#if defined(R66455_FHDP_DSI_VDO_VISIONOX)
-	&r66455_fhdp_dsi_vdo_visionox_lcm_drv,
-#endif
-#if defined(R692C9_FHDP_DSI_VDO_VISIONOX)
-	&r692c9_fhdp_dsi_vdo_visionox_lcm_drv,
-#endif
-#if defined(ILI9881C_HD_DSI_VDO_CMI_ATA)
-	&ili9881c_hd_dsi_vdo_cmi_ata_lcm_drv,
-#endif
-#if defined(ILI9881H_HDP_DSI_VDO_CTC6217_DZX)
-	&ili9881h_hdp_dsi_vdo_ctc6217_dzx_lcm_drv,
-#endif
-//prize add by lipengpeng 20200714 start
-#if defined(ILI9882_HDP_DSI_VDO_CTC6217_DZX)
-	&ili9882_hdp_dsi_vdo_ctc6217_dzx_lcm_drv,
-#endif
-//prize add by lipengpeng 2020714 end 
-#if defined(NT36672A_FHD_DSI_VDO_INNOLUX)
-	&nt36672a_fhd_dsi_vdo_Innolux_lcm_drv,
-#endif
-//prize add by lipengpeng 20191223 end
-
-//prize add by sunshuai 20200224 start
-#if defined(ILI7807D_FHDP_DSI_VDO_BOE_DRIP_INCELL)
-	&ili7807d_fhdp_dsi_vdo_boe_drip_incell_lcm_drv,
-#endif	
-//prize add by sunshuai 20200224 start
 
 #if defined(OTM1284A_HD720_DSI_VDO_TM)
 	&otm1284a_hd720_dsi_vdo_tm_lcm_drv,
@@ -955,10 +911,6 @@ struct LCM_DRIVER *lcm_driver_list[] = {
 	&otm1906a_fhd_dsi_cmd_auto_lcm_drv,
 #endif
 
-#if defined(NT35532_FHD_DSI_VDO_SHARP)
-	&nt35532_fhd_dsi_vdo_sharp_lcm_drv,
-#endif
-
 #if defined(CLAP070WP03XG_LVDS)
 	&clap070wp03xg_lvds_lcm_drv,
 #endif
@@ -1202,6 +1154,10 @@ struct LCM_DRIVER *lcm_driver_list[] = {
 	&ili9881c_hdp_dsi_vdo_ilitek_rt5081_lcm_drv,
 #endif
 
+#if defined(ILI9881C_HD720_TD_TCHD5031_6B_DSI_VDO)
+	&ili9881c_hd720_td_tchd5031_6b_dsi_vdo_lcm_drv,
+#endif
+
 #if defined(NT51021_WUXGA_DSI_VDO_MT8173)
 	&nt51021_wuxga_dsi_vdo_mt8173_lcm_drv,
 #endif
@@ -1318,24 +1274,16 @@ struct LCM_DRIVER *lcm_driver_list[] = {
 	&nt36672c_fhdp_dsi_vdo_auo_cphy_90hz_jdi_lcm_drv,
 #endif
 
-#if defined(NT36672C_FHDP_DSI_VDO_AUO_CPHY_90HZ_JDI_HFP)
-	&nt36672c_fhdp_dsi_vdo_auo_cphy_90hz_jdi_hfp_lcm_drv,
-#endif
-
 #if defined(NT36672C_FHDP_DSI_VDO_AUO_CPHY_90HZ_TIANMA)
 	&nt36672c_fhdp_dsi_vdo_auo_cphy_90hz_tianma_lcm_drv,
 #endif
 
-#if defined(NT36672C_FHDP_DSI_VDO_AUO_CPHY_90HZ_TIANMA_HFP)
-	&nt36672c_fhdp_dsi_vdo_auo_cphy_90hz_tianma_hfp_lcm_drv,
+#if defined(NT36672C_FHDP_DSI_VDO_AUO_CPHY_90HZ)
+	&nt36672c_fhdp_dsi_vdo_auo_cphy_90hz_lcm_drv,
 #endif
 
 #if defined(OTM1287_WXGA_DSI_VDO_AUO_GUOXIAN)
 	&otm1287_wxga_dsi_vdo_auo_guoxian_lcm_drv,
-#endif
-
-#if defined(NT35532_FHD_DSI_VDO_SHARP)
-	&nt35532_fhd_dsi_vdo_sharp_lcm_drv,
 #endif
 
 #if defined(OTM1901A_FHD_DSI_VDO_TPV)
@@ -1346,24 +1294,32 @@ struct LCM_DRIVER *lcm_driver_list[] = {
 	&r63350a_fhd_dsi_vdo_truly_lcm_drv,
 #endif
 
+#if defined(NT35532_FHD_DSI_VDO_SHARP)
+	&nt35532_fhd_dsi_vdo_sharp_lcm_drv,
+#endif
+
 #if defined(TD4320_FHDP_DSI_VDO_AUO_RT5081)
 	&td4320_fhdp_dsi_vdo_auo_rt5081_lcm_drv,
+#endif
+
+#if defined(TD4330_FHDP_DSI_CMD_AUO_RT5081)
+	&td4330_fhdp_dsi_cmd_auo_rt5081_lcm_drv,
+#endif
+
+#if defined(TD4330_FHDP_DSI_VDO_AUO_RT5081)
+	&td4330_fhdp_dsi_vdo_auo_rt5081_lcm_drv,
 #endif
 
 #if defined(NT51021H_WUXGA_VDO_ONCELL_BOE)
 	&nt51021h_wuxga_vdo_oncell_boe_lcm_drv,
 #endif
-#if defined(IT6112_SAMPLE_DSI_VDO)
-	&it6112_sample_dsi_vdo_lcm_drv,
-#endif
-/*prize-add lcm-pengguangyi-20190119-start*/
-#if defined(HX83112_FHDP_DSI_VDO_AUO)
-	&hx83112_fhdp_dsi_vdo_auo_drv,
-#endif	
-/*prize-add lcm-pengguangyi-20190119-end*/
 
-#if defined(FT8756_FHDP_DSI_VDO_TCL)
-	&ft8756_fhdp_dsi_vdo_tcl_drv,
+#if defined(FT8201_WUXGA_DSI_VDO_BOE)
+	&ft8201_wuxga_dsi_vdo_boe_lcm_drv,
+#endif
+
+#if defined(FT8756_FHDP_DSI_VDO_AUO_RT4801)
+	&ft8756_fhdp_dsi_vdo_auo_rt4801_lcm_drv,
 #endif
 };
 
@@ -1444,10 +1400,6 @@ unsigned char lcm_name_list[][128] = {
 
 #if defined(NT35695B_FHD_DSI_VDO_AUO_RT5081_HDP_20_9)
 	"nt35695B_fhd_dsi_vdo_auo_rt5081_hdp_20_9_drv",
-#endif
-
-#if defined(IT6112_SAMPLE_DSI_VDO)
-	"it6112_sample_dsi_vdo_lcm_drv",
 #endif
 };
 

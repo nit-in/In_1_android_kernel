@@ -1,5 +1,6 @@
 /*
  * Copyright (C) 2016 MediaTek Inc.
+ * Copyright (C) 2021 XiaoMi, Inc.
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License version 2 as
@@ -179,6 +180,15 @@ void ccci_md_add_log_history(struct ccci_hif_traffic *tinfo,
 	int queue_index, struct ccci_header *msg, int is_droped)
 {
 #ifdef PACKET_HISTORY_DEPTH
+	if (queue_index < 0 || queue_index >= MAX_TXQ_NUM
+		|| tinfo->rx_history_ptr[queue_index] < 0
+		|| tinfo->rx_history_ptr[queue_index] >= PACKET_HISTORY_DEPTH
+		|| tinfo->tx_history_ptr[queue_index] < 0
+		|| tinfo->tx_history_ptr[queue_index] >= PACKET_HISTORY_DEPTH) {
+		CCCI_MEM_LOG(-1, CORE,
+			"invalid queue_index=%d\n", queue_index);
+		return;
+	}
 	if (dir == OUT) {
 		memcpy(&tinfo->tx_history[queue_index][
 			tinfo->tx_history_ptr[queue_index]].msg, msg,

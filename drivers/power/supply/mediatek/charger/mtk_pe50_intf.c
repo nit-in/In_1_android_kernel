@@ -10,8 +10,6 @@
  * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
  * See http://www.gnu.org/licenses/gpl-2.0.html for more details.
  */
-#ifdef CONFIG_MTK_PUMP_EXPRESS_PLUS_50_SUPPORT
-/*prize-huangjiwu-20200730, add for rt9759 pe50 start*/
 
 #include <mt-plat/prop_chgalgo_class.h>
 #include "mtk_charger_intf.h"
@@ -252,6 +250,4 @@ int mtk_pe50_stop_algo(struct charger_manager *chgmgr, bool rerun)
 
 	return ret;
 }
-#endif
-/*prize-huangjiwu-20200730, add for rt9759 pe50 end*/
 #endif

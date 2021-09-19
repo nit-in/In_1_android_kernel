@@ -1,5 +1,6 @@
 /*
  * Copyright (C) 2017 MediaTek Inc.
+ * Copyright (C) 2021 XiaoMi, Inc.
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License version 2 as
@@ -22,17 +23,7 @@
 
 
 #include "imgsensor_hw.h"
-/*prize add by zhuzhengjiang for camera idx 20200903 start*/
-#ifdef MIPI_SWITCH
-extern struct pinctrl_state *ppinctrl_cam_mipi_sel_h;
-extern struct pinctrl_state *ppinctrl_cam_mipi_sel_l;
-extern struct pinctrl		 *ppinctrl_cam;
-extern struct pinctrl_state *ppinctrl_cam_mipi_en_h;
-extern struct pinctrl_state *ppinctrl_cam_mipi_en_l;
-#endif
-int curr_sensor_id =0;
-extern void AFRegulatorCtrl(int Stage); //prize  add  by zhuzhengjiang  for  otp 20200912-begin
-/*prize add by zhuzhengjiang for camera idx 20200903 end*/
+
 enum IMGSENSOR_RETURN imgsensor_hw_release_all(struct IMGSENSOR_HW *phw)
 {
 	int i;
@@ -127,11 +118,10 @@ static enum IMGSENSOR_RETURN imgsensor_hw_power_sequence(
 		}
 		ppwr_seq++;
 	}
-/*prize add by zhuzhengjiang for camera idx 20200903 start*/
-	curr_sensor_id = (int)sensor_idx;
-/*prize add by zhuzhengjiang for camera idx 20200903 end*/
+
 	if (ppwr_seq->name == NULL)
 		return IMGSENSOR_RETURN_ERROR;
+
 
 	ppwr_info = ppwr_seq->pwr_info;
 
@@ -197,97 +187,28 @@ enum IMGSENSOR_RETURN imgsensor_hw_power(
 {
 	enum IMGSENSOR_SENSOR_IDX sensor_idx = psensor->inst.sensor_idx;
 	char str_index[LENGTH_FOR_SNPRINTF];
+	int ret = 0;
 
 	pr_info(
 		"sensor_idx %d, power %d curr_sensor_name %s, enable list %s\n",
 		sensor_idx,
 		pwr_status,
 		curr_sensor_name,
-		phw->enable_sensor_by_index[sensor_idx] == NULL
+		phw->enable_sensor_by_index[(uint32_t)sensor_idx] == NULL
 		? "NULL"
-		: phw->enable_sensor_by_index[sensor_idx]);
+		: phw->enable_sensor_by_index[(uint32_t)sensor_idx]);
 
-	if (phw->enable_sensor_by_index[sensor_idx] &&
-	!strstr(phw->enable_sensor_by_index[sensor_idx], curr_sensor_name))
+	if (phw->enable_sensor_by_index[(uint32_t)sensor_idx] &&
+	!strstr(phw->enable_sensor_by_index[(uint32_t)sensor_idx], curr_sensor_name))
 		return IMGSENSOR_RETURN_ERROR;
 
 
-	snprintf(str_index, sizeof(str_index), "%d", sensor_idx);
-// prize add by zhuzhengjiang for mipi switch 20200904 start
-#ifdef MIPI_SWITCH
-     if(pwr_status == IMGSENSOR_HW_POWER_STATUS_ON)
-	{
-		if (!IS_ERR(ppinctrl_cam_mipi_en_l))
-		{
-			pinctrl_select_state(ppinctrl_cam, ppinctrl_cam_mipi_en_l);
-		}
-		else
-		{
-			printk("ppinctrl_cam_mipi_sel_state h pinctrl err\n");
-		}
-		mdelay(5);	
+	ret = snprintf(str_index, sizeof(str_index), "%d", sensor_idx);
+	if (ret == 0) {
+		pr_info("Error! snprintf allocate 0");
+		ret = IMGSENSOR_RETURN_ERROR;
+		return ret;
 	}
-     else if(pwr_status == IMGSENSOR_HW_POWER_STATUS_OFF)
-	{
-		if (!IS_ERR(ppinctrl_cam_mipi_en_h))
-		{
-			pinctrl_select_state(ppinctrl_cam, ppinctrl_cam_mipi_en_h);
-		}
-		else
-		{
-			printk("ppinctrl_cam_mipi_sel_state l pinctrl err\n");
-		}
-	}
-
-	if(pwr_status == IMGSENSOR_HW_POWER_STATUS_ON && sensor_idx == IMGSENSOR_SENSOR_IDX_SUB)
-	{
-	    printk("ppinctrl_cam_mipi_sel_state down pinctrl \n");
-		if (!IS_ERR(ppinctrl_cam_mipi_sel_l))
-		{
-			pinctrl_select_state(ppinctrl_cam, ppinctrl_cam_mipi_sel_l);
-		}
-		else
-		{
-			printk("ppinctrl_cam_mipi_sel_state l pinctrl err\n");
-		}
-		mdelay(5);
-	}
-	else if(pwr_status == IMGSENSOR_HW_POWER_STATUS_ON && sensor_idx == IMGSENSOR_SENSOR_IDX_SUB2)
-	{
-		 printk("ppinctrl_cam_mipi_sel_state high pinctrl \n");
-		if (!IS_ERR(ppinctrl_cam_mipi_sel_h))
-		{
-			pinctrl_select_state(ppinctrl_cam, ppinctrl_cam_mipi_sel_h);
-		}
-		else
-		{
-			printk("ppinctrl_cam_mipi_sel_state h pinctrl err\n");
-		}
-		mdelay(5);
-	}
-	else
-	{
-		if (!IS_ERR(ppinctrl_cam_mipi_sel_l))
-		{
-			pinctrl_select_state(ppinctrl_cam, ppinctrl_cam_mipi_sel_l);
-		}
-		else
-		{
-			printk("ppinctrl_cam_mipi_sel_state l pinctrl err\n");
-		}
-	}
-#endif
-// prize add by zhuzhengjiang for mipi switch 20200904 end
-//prize  add  by zhuzhengjiang  for otp 20200912-begin
-	if(pwr_status == IMGSENSOR_HW_POWER_STATUS_ON && sensor_idx == IMGSENSOR_SENSOR_IDX_MAIN)
-	{
-		AFRegulatorCtrl(1);
-	}
-	else if(pwr_status == IMGSENSOR_HW_POWER_STATUS_OFF)
-	{
-		AFRegulatorCtrl(2);
-	}
-//prize  add  by zhuzhengjiang  for otp 20200912-end
 	imgsensor_hw_power_sequence(
 	    phw,
 	    sensor_idx,

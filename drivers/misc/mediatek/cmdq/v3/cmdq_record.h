@@ -1,14 +1,7 @@
+/* SPDX-License-Identifier: GPL-2.0 */
 /*
- * Copyright (C) 2015 MediaTek Inc.
- *
- * This program is free software: you can redistribute it and/or modify
- * it under the terms of the GNU General Public License version 2 as
- * published by the Free Software Foundation.
- *
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
- * GNU General Public License for more details.
+ * Copyright (c) 2015 MediaTek Inc.
+ * Copyright (C) 2021 XiaoMi, Inc.
  */
 
 #ifndef __CMDQ_RECORD_H__
@@ -44,10 +37,6 @@ struct cmdq_stack_node {
 };
 
 struct cmdq_user_req {
-#if 0
-	u32 *buffer;
-	u32 buffer_size;
-#endif
 	u32 reg_count;
 	u32 user_token;
 };
@@ -194,6 +183,7 @@ s32 cmdqRecWrite(struct cmdqRecStruct *handle, u32 addr, u32 value, u32 mask);
  * Note:
  *	support only when secure OS enabled
  */
+void cmdq_task_set_mtee(struct cmdqRecStruct *handle, const bool enable);
 s32 cmdq_op_write_reg_secure(struct cmdqRecStruct *handle, u32 addr,
 	enum CMDQ_SEC_ADDR_METADATA_TYPE type, u64 baseHandle,
 	u32 offset, u32 size, u32 port);
@@ -300,11 +290,34 @@ s32 cmdq_op_write_from_data_register(struct cmdqRecStruct *handle,
 s32 cmdqRecWriteFromDataRegister(struct cmdqRecStruct *handle,
 	enum cmdq_gpr_reg src_data_reg, u32 hw_addr);
 
-s32 cmdq_op_write_reg_ex(struct cmdqRecStruct *handle, u32 addr,
-	CMDQ_VARIABLE argument, u32 mask);
-s32 cmdq_op_acquire(struct cmdqRecStruct *handle, enum cmdq_event event);
-s32 cmdq_op_write_from_reg(struct cmdqRecStruct *handle,
-	u32 write_reg, u32 from_reg);
+struct cmdq_command_buffer {
+	void *va_base;
+	u32 cmd_buf_size;
+	u32 avail_buf_size;
+};
+s32 cmdq_op_poll_ex(struct cmdqRecStruct *handle,
+	struct cmdq_command_buffer *cmd_buf, u32 addr,
+	CMDQ_VARIABLE value, u32 mask);
+s32 cmdq_op_read_reg_to_mem_ex(struct cmdqRecStruct *handle,
+	struct cmdq_command_buffer *cmd_buf,
+	cmdqBackupSlotHandle h_backup_slot, u32 slot_index, u32 addr);
+s32 cmdq_op_write_reg_ex(struct cmdqRecStruct *handle,
+	struct cmdq_command_buffer *cmd_buf, u32 addr,
+	CMDQ_VARIABLE value, u32 mask);
+s32 cmdq_op_wait_ex(struct cmdqRecStruct *handle,
+	struct cmdq_command_buffer *cmd_buf, enum cmdq_event event);
+s32 cmdq_op_wait_no_clear_ex(struct cmdqRecStruct *handle,
+	struct cmdq_command_buffer *cmd_buf, enum cmdq_event event);
+s32 cmdq_op_clear_event_ex(struct cmdqRecStruct *handle,
+	struct cmdq_command_buffer *cmd_buf, enum cmdq_event event);
+s32 cmdq_op_set_event_ex(struct cmdqRecStruct *handle,
+	struct cmdq_command_buffer *cmd_buf, enum cmdq_event event);
+s32 cmdq_op_acquire_ex(struct cmdqRecStruct *handle,
+	struct cmdq_command_buffer *cmd_buf, enum cmdq_event event);
+s32 cmdq_op_write_from_reg_ex(struct cmdqRecStruct *handle,
+	struct cmdq_command_buffer *cmd_buf, u32 write_reg, u32 from_reg);
+s32 cmdq_handle_flush_cmd_buf(struct cmdqRecStruct *handle,
+	struct cmdq_command_buffer *cmd_buf);
 s32 cmdq_alloc_write_addr(u32 count, dma_addr_t *paStart, u32 clt, void *fp);
 s32 cmdq_free_write_addr(dma_addr_t paStart, u32 clt);
 s32 cmdq_free_write_addr_by_node(u32 clt, void *fp);
@@ -319,9 +332,13 @@ s32 cmdqBackupAllocateSlot(cmdqBackupSlotHandle *p_h_backup_slot,
  */
 s32 cmdq_cpu_read_mem(cmdqBackupSlotHandle h_backup_slot, u32 slot_index,
 	u32 *value);
-s32 cmdqBackupReadSlot(cmdqBackupSlotHandle h_backup_slot, u32 slot_index,
+s32 cmdqBackupReadSlotext(cmdqBackupSlotHandle h_backup_slot, u32 slot_index,
 	u32 *value);
-
+#define cmdqBackupReadSlot(h_backup_slot, slot_index, value)                      \
+do {                                                                                       \
+	 pr_debug("cmdqBackupReadSlot called by %s line no %d\n", __func__, __LINE__);      \
+	 cmdqBackupReadSlotext(h_backup_slot, slot_index, value);                              \
+} while (0)
 /* Use CPU to write value into 32-bit register backup slot by index directly.
  */
 s32 cmdq_cpu_write_mem(cmdqBackupSlotHandle h_backup_slot,
@@ -345,9 +362,13 @@ s32 cmdqBackupFreeSlot(cmdqBackupSlotHandle h_backup_slot);
  */
 s32 cmdq_op_read_reg_to_mem(struct cmdqRecStruct *handle,
 	cmdqBackupSlotHandle h_backup_slot, u32 slot_index, u32 addr);
-s32 cmdqRecBackupRegisterToSlot(struct cmdqRecStruct *handle,
+s32 cmdqRecBackupRegisterToSlotext(struct cmdqRecStruct *handle,
 	cmdqBackupSlotHandle h_backup_slot, u32 slot_index, u32 addr);
-
+#define cmdqRecBackupRegisterToSlot(handle, h_backup_slot, slot_index, addr)                      \
+do {                                                                                       \
+	pr_debug("cmdqRecBackupRegisterToSlot called by %s line no %d\n", __func__, __LINE__);      \
+	cmdqRecBackupRegisterToSlotext(handle,h_backup_slot, slot_index, addr);                   \
+} while (0)
 /* Insert instructions to write 32-bit HW register
  * from a backup slot.
  * You can use cmdq_cpu_read_mem() to retrieve the result

@@ -64,6 +64,7 @@ config SND_SOC_ALL_CODECS
 	select SND_SOC_CS4349 if I2C
 	select SND_SOC_CS47L24 if MFD_CS47L24
 	select SND_SOC_CS53L30 if I2C
+	select SND_SOC_CS35L41_SPI if SPI_MASTER
 	select SND_SOC_CX20442 if TTY
 	select SND_SOC_DA7210 if SND_SOC_I2C_AND_SPI
 	select SND_SOC_DA7213 if I2C
@@ -223,11 +224,6 @@ config SND_SOC_ALL_CODECS
 	select SND_SOC_RT5509 if I2C
 	select SND_SOC_MT6660 if I2C
 	select SND_SOC_TFA9874 if I2C
-# prize modified by lifenfen, add awinic smartpa aw8898 or aw881xx, 20200103 begin
-	select SND_SOC_AW8898 if I2C
-	select SND_SMARTPA_AW881XX if I2C
-	select SND_SMARTPA_AW88194A if I2C
-# prize modified by lifenfen, add awinic smartpa aw8898 or aw881xx, 20200103 end
         help
           Normally ASoC codec drivers are only built if a machine driver which
           uses them is also built since they are only usable with a machine
@@ -267,10 +263,12 @@ config SND_SOC_WM_ADSP
 	default y if SND_SOC_WM5102=y
 	default y if SND_SOC_WM5110=y
 	default y if SND_SOC_WM2200=y
+	default y if SND_SOC_CS35L41=y
 	default m if SND_SOC_CS47L24=m
 	default m if SND_SOC_WM5102=m
 	default m if SND_SOC_WM5110=m
 	default m if SND_SOC_WM2200=m
+	default m if SND_SOC_CS35L41=m
 
 config SND_SOC_AB8500_CODEC
 	tristate
@@ -433,6 +431,13 @@ config SND_SOC_CS35L34
 config SND_SOC_CS35L35
 	tristate "Cirrus Logic CS35L35 CODEC"
 	depends on I2C
+config SND_SOC_CS35L41
+	tristate "Cirrus Logic CS35L41 CODEC"
+
+config SND_SOC_CS35L41_SPI
+	tristate "Cirrus Logic CS35L41 CODEC (SPI)"
+	select SND_SOC_CS35L41
+	select REGMAP_SPI
 
 config SND_SOC_CS42L42
 	tristate "Cirrus Logic CS42L42 CODEC"
@@ -946,6 +951,9 @@ config SND_SOC_TLV320AIC3X
 config SND_SOC_TLV320DAC33
 	tristate
 
+config SND_SOC_TLV320WN
+	tristate
+
 config SND_SOC_TS3A227E
 	tristate "TI Headset/Mic detect and keypress chip"
 	depends on I2C
@@ -1185,6 +1193,14 @@ config SND_SOC_TFA9874
 	  multi-band DRC, equalizer function. It would
 	  be set to yes if device with TFA9874 on it.
 
+config SND_SOC_AW87339
+	tristate "AWINIC AW8773 speaker amplifier"
+	help
+	  Config of AWINIC AW87339 speaker amplifier.
+	  It is a speaker amp which connect with MTK
+	  PMIC device which has no speaker protection
+	  function.
+
 config SND_SOC_LM4857
 	tristate
 
@@ -1232,72 +1248,5 @@ config SND_SOC_RT5509
 	tristate "Richtek RT5509 Smart AMP"
 	depends on I2C
 	select RT_REGMAP
-
-# prize modified by lifenfen, add awinic smartpa aw8898, 20200103 begin
-config SND_SOC_AW8898
-        tristate "SoC Audio for awinic aw8898 series"
-        depends on I2C
-        default n
-        help
-          This option enables support for aw8898 series Smart PA.
-# prize modified by lifenfen, add awinic smartpa aw8898, 20200103 end
-
-# prize modified by wyq, add awinic smartpa aw881xx, 20200103 begin
-config SND_SMARTPA_AW881XX
-        tristate "SoC Audio for awinic aw881xx series"
-        depends on I2C
-        default n
-        help
-          This option enables support for aw881xx series Smart PA.
-# prize modified by wyq, add awinic smartpa aw881xx, 20200103 end
-# prize add by liaoxingen, awinic aw881xx, 20200601 start
-config SND_SMARTPA_AW88194A_NEW
-        tristate "SoC Audio for awinic aw881a series"
-        depends on I2C
-        default n
-        help
-          This option enables support for aw881xx series Smart PA.
-# prize add by liaoxingen, awinic aw881xx, 20200601 end 
-
-# prize modified by xuxiaoming, add awinic smartpa aw88194a, 20200116 begin
-config SND_SMARTPA_AW88194A
-        tristate "SoC Audio for awinic aw881xx series"
-        depends on I2C
-        default n
-        help
-          This option enables support for aw881xx series Smart PA.
-# prize xuxiaoming, add awinic smartpa aw88194a, 20200116 end
-
-# prize add by huarui, add smartpa, 20200103 begin
-config SND_SOC_AW881XX_STEREO
-        tristate "SoC Audio for awinic aw881xx series"
-        default n
-        help
-          This option enables support for aw881xx series Smart PA.
-# prize add by huarui, add smartpa, 20200103 end
-
-# prize add by huarui, add foursemi smartpa fs1894u, 20200103 begin
-config SND_SOC_FS16XX
-        tristate "SoC Audio for awinic fs1894u series"
-        depends on I2C
-        default n
-        help
-          This option enables support for fs1894u series Smart PA.
-# prize add by huarui, add foursemi smartpa fs1894u, 20200103 end
-
-# prize add by huarui, add igo ig1202 codec, 20200103 begin
-config SND_SOC_DEBUSSY
-        tristate "SoC Audio codec for IntelliGO IG1202"
-        depends on I2C
-        default n
-        help
-          This option enables support for IntelliGO IG1202 codec.
-		  
-config PRIZE_I2S1_ADC
-        tristate "PRIZE_I2S1_ADC"
-        default n
-        help
-          This option enables support for IntelliGO IG1202 codec.
-# prize add by huarui, add igo ig1202 codec, 20200103 end
 
 endmenu

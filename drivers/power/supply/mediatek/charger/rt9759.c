@@ -10,8 +10,6 @@
  * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
  * See http://www.gnu.org/licenses/gpl-2.0.html for more details.
  */
-#ifdef CONFIG_MTK_PUMP_EXPRESS_PLUS_50_SUPPORT
-/*prize-huangjiwu-20200730, add for rt9759 pe50 start*/
 
 #include <linux/init.h>
 #include <linux/module.h>
@@ -28,8 +26,6 @@
 #ifdef CONFIG_RT_REGMAP
 #include <mt-plat/rt-regmap.h>
 #endif /* CONFIG_RT_REGMAP */
-
-#include <mt-plat/mtk_battery.h>
 
 /* Information */
 #define RT9759_DRV_VERSION	"1.0.8_MTK"
@@ -853,21 +849,12 @@ static int rt9759_enable_wdt(struct rt9759_chip *chip, bool en)
 static int __rt9759_get_adc(struct rt9759_chip *chip,
 			    enum rt9759_adc_channel chan, int *val)
 {
-	int ret=0;
+	int ret;
 	u8 data[2];
-
-	if (chan == RT9759_ADC_IBAT) {
-		*val = battery_get_bat_current() * 100;
-
-		dev_info(chip->dev, "%s %s %d\n", __func__,
-			 rt9759_adc_name[chan], *val);
-		goto out;
-	}
 
 	ret = rt9759_set_bits(chip, RT9759_REG_ADCCTRL, RT9759_ADCEN_MASK);
 	if (ret < 0)
 		goto out;
-
 	usleep_range(12000, 15000);
 	ret = rt9759_i2c_read_block(chip, rt9759_adc_reg[chan], 2, data);
 	if (ret < 0)
@@ -878,6 +865,7 @@ static int __rt9759_get_adc(struct rt9759_chip *chip,
 	case RT9759_ADC_VAC:
 	case RT9759_ADC_VOUT:
 	case RT9759_ADC_VBAT:
+	case RT9759_ADC_IBAT:
 		*val = ((data[0] << 8) + data[1]) * 1000;
 		break;
 	case RT9759_ADC_TDIE:
@@ -1170,7 +1158,7 @@ static int rt9759_init_chip(struct charger_device *chg_dev)
 		if (ret < 0)
 			return ret;
 		if ((val & reg_defval->mask) == reg_defval->value) {
-			dev_err(chip->dev,
+			dev_info(chip->dev,
 				"%s chip reset happened, reinit\n", __func__);
 			return __rt9759_init_chip(chip);
 		}
@@ -2031,8 +2019,6 @@ MODULE_LICENSE("GPL");
 MODULE_DESCRIPTION("Richtek RT9759 Charger Driver");
 MODULE_AUTHOR("ShuFan Lee<shufan_lee@richtek.com>");
 MODULE_VERSION(RT9759_DRV_VERSION);
-/*prize-huangjiwu-20200730, add for rt9759 pe50 end*/
-#endif
 
 /*
  * 1.0.8_MTK

@@ -19,8 +19,8 @@
 		reg = <0x53>;
 		status = "okay";
 
-		rt,intr_gpio = <&pio 19 0x0>; /* GPIO */
-		rt,intr_gpio_num = <19>; /* direct defined GPIO num */
+		rt,intr_gpio = <&pio 42 0x0>; /* GPIO */
+		rt,intr_gpio_num = <42>; /* direct defined GPIO num */
 		/*
 		 * rt,ceb_gpio = <&pio 43 0x0>;
 		 * rt,ceb_gpio_num = <43>;
@@ -31,17 +31,19 @@
 			 * Primary charger: primary_chg
 			 * Secondary charger: secondary_chg
 			 */
-			chg_name = "secondary_chg";
+			chg_name = "primary_chg";
 			chg_alias_name = "rt9471_chg";
 			rm-dev-addr = /bits/ 8 <0x53>;
 			rm-name = "rt9471";
 			interrupt-names = "wdt", "chg_mivr", "vbus_gd",
-					  "vac_ov", "chg_rdy", "chg_done",
-					  "chg_tout", "chg_batov", "detach";
+					  "bc12_done", "detach", "vac_ov",
+					  "otg_fault", "chg_rdy", "chg_done",
+					  "aicc_done", "pe_done", "chg_tout",
+					  "rechg", "chg_batov";
 			vac_ovp = <14000000>;		/* uV */
 			mivr = <4400000>;		/* uV */
 			aicr = <500000>;		/* uA */
-			cv = <4400000>;			/* uV */
+			cv = <4350000>;			/* uV */
 			ichg = <1000000>;		/* uA */
 			ieoc = <200000>;		/* uA */
 			safe_tmr = <10>;		/* hour */
@@ -54,7 +56,7 @@
 			 */
 			mivr_track = <0>;
 			en_safe_tmr;
-			/* en_te; */
+			en_te;
 			/* en_jeita; */
 			/* ceb_invert; */
 			/* dis_i2c_tout; */

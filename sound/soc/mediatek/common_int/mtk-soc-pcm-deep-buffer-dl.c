@@ -428,12 +428,8 @@ static int mtk_deep_buffer_dl_prepare(struct snd_pcm_substream *substream)
 		    false) {
 			SetMemoryPathEnable(Soc_Aud_Digital_Block_I2S_OUT_DAC,
 					    true);
-		//prize add by huarui, add igo ig1202 codec, 20200103 begin
-		#if !defined(CONFIG_PRIZE_I2S1_ADC)
 			SetI2SDacOut(substream->runtime->rate,
 				     deep_buffer_dl_hdoutput, mI2SWLen);
-		#endif
-		//prize add by huarui, add igo ig1202 codec, 20200103 end
 			SetI2SDacEnable(true);
 		} else {
 			SetMemoryPathEnable(Soc_Aud_Digital_Block_I2S_OUT_DAC,
@@ -604,8 +600,12 @@ static int mtk_deep_buffer_dl_probe(struct platform_device *pdev)
 	pr_info("%s\n", __func__);
 
 
-	if (pdev->dev.of_node)
+	if (pdev->dev.of_node) {
 		dev_set_name(&pdev->dev, "%s", MT_SOC_DEEP_BUFFER_DL_PCM);
+		pdev->name = pdev->dev.kobj.name;
+	} else {
+		pr_debug("%s(), pdev->dev.of_node = NULL!!!\n", __func__);
+	}
 
 	pr_debug("%s: dev name %s\n", __func__, dev_name(&pdev->dev));
 

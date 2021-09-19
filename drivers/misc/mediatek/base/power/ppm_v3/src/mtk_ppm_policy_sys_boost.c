@@ -1,5 +1,6 @@
 /*
  * Copyright (C) 2016 MediaTek Inc.
+ * Copyright (C) 2021 XiaoMi, Inc.
  *
  * This program is free software: you can redistribute it and/or modify
  * it under the terms of the GNU General Public License version 2 as
@@ -167,7 +168,7 @@ void mt_ppm_sysboost_freq(enum ppm_sysboost_user user, unsigned int freq)
 	struct ppm_sysboost_data *data;
 	int i, freq_idx;
 
-	if (user >= NR_PPM_SYSBOOST_USER) {
+	if ((user >= NR_PPM_SYSBOOST_USER) || (user < 0)) {
 		ppm_err("@%s: Invalid input: user = %d, freq = %d\n",
 			__func__, user, freq);
 		return;
@@ -241,7 +242,7 @@ void mt_ppm_sysboost_set_freq_limit(enum ppm_sysboost_user user,
 	if ((max_freq != -1 && max_freq > get_cluster_max_cpufreq(cluster))
 		|| (min_freq != -1
 		&& min_freq < get_cluster_min_cpufreq(cluster))
-		|| user >= NR_PPM_SYSBOOST_USER) {
+		|| user >= NR_PPM_SYSBOOST_USER || user < 0) {
 		ppm_err("Invalid input: user/cl=%d/%d, min/max freq=%d/%d\n",
 			user, cluster, min_freq, max_freq);
 		return;
@@ -548,6 +549,8 @@ static int __init ppm_sysboost_policy_init(void)
 		case BOOST_BY_BOOT_TIME_OPT:
 			sysboost_data[i].user_name = "BOOT_TIME_OPT";
 			break;
+		case BOOST_BY_XM_THERMAL:
+			sysboost_data[i].user_name = "XM_THERM";
 		case BOOST_BY_UT:
 		default:
 			sysboost_data[i].user_name = "UT";
@@ -573,7 +576,7 @@ static int __init ppm_sysboost_policy_init(void)
 	ppm_info("@%s: register %s done!\n", __func__, sysboost_policy.name);
 
 out:
-	sysboost_policy.is_enabled = false;
+	sysboost_policy.is_enabled = true;
 	FUNC_EXIT(FUNC_LV_POLICY);
 
 	return ret;

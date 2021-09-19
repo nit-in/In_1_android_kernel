@@ -1,5 +1,6 @@
 /*
  * Copyright (C) 2017 MediaTek Inc.
+ * Copyright (C) 2021 XiaoMi, Inc.
  *
  * This program is free software: you can redistribute it and/or modify
  * it under the terms of the GNU General Public License version 2 as
@@ -47,6 +48,9 @@
 #endif
 #include "pmic_auxadc.h"
 #endif /* end of #if PMIC_ACCDET_KERNEL */
+#ifdef CONFIG_SWITCH
+#include <linux/switch.h>
+#endif
 
 /********************grobal variable definitions******************/
 #if PMIC_ACCDET_CTP
@@ -212,6 +216,10 @@ static int moisture_ext_r = 470000;
 static bool debug_thread_en;
 static bool dump_reg;
 static struct task_struct *thread;
+#ifdef CONFIG_SWITCH
+//add for switch to show the headset plug status
+static struct switch_dev accdet_data;
+#endif
 
 static void accdet_init_once(void);
 static inline void accdet_init(void);
@@ -391,68 +399,91 @@ static void dump_register(void)
 #if PMIC_ACCDET_KERNEL
 static void cat_register(char *buf)
 {
-	int i = 0;
+	int i = 0, ret = 0;
 
 #ifdef CONFIG_ACCDET_EINT_IRQ
 #ifdef CONFIG_ACCDET_SUPPORT_EINT0
-	sprintf(accdet_log_buf, "[Accdet EINT0 support][MODE_%d]regs:\n",
+	ret = sprintf(accdet_log_buf, "[Accdet EINT0 support][MODE_%d]regs:\n",
 		accdet_dts.mic_mode);
+	if (ret < 0)
+		pr_notice("sprintf failed\n");
 	strncat(buf, accdet_log_buf, strlen(accdet_log_buf));
 #elif defined CONFIG_ACCDET_SUPPORT_EINT1
-	sprintf(accdet_log_buf, "[ccdet EINT1 support][MODE_%d]regs:\n",
+	ret = sprintf(accdet_log_buf, "[Accdet EINT1 support][MODE_%d]regs:\n",
 		accdet_dts.mic_mode);
+	if (ret < 0)
+		pr_notice("sprintf failed\n");
 	strncat(buf, accdet_log_buf, strlen(accdet_log_buf));
 #elif defined CONFIG_ACCDET_SUPPORT_BI_EINT
-	sprintf(accdet_log_buf, "[Accdet BIEINT support][MODE_%d] regs:\n",
+	ret = sprintf(accdet_log_buf, "[Accdet EINT support][MODE_%d] regs:\n",
 		accdet_dts.mic_mode);
+	if (ret < 0)
+		pr_notice("sprintf failed\n");
 	strncat(buf, accdet_log_buf, strlen(accdet_log_buf));
 #else
 	strncat(buf, "ACCDET_EINT_IRQ:NO EINT configed.Error!!\n", 64);
 #endif
 #elif defined CONFIG_ACCDET_EINT
-	sprintf(accdet_log_buf, "[Accdet AP EINT][MODE_%d] regs:\n",
+	ret = sprintf(accdet_log_buf, "[Accdet AP EINT][MODE_%d] regs:\n",
 		accdet_dts.mic_mode);
+	if (ret < 0)
+		pr_notice("sprintf failed\n");
 	strncat(buf, accdet_log_buf, strlen(accdet_log_buf));
 #else
 	strncat(buf, "ACCDET EINT:No configed.Error!!\n", 64);
 #endif
 
 	for (i = ACCDET_RSV; i <= ACCDET_EINT1_CUR_DEB; i += 2) {
-		sprintf(accdet_log_buf, "ADDR[0x%x]=0x%x\n", i, pmic_read(i));
+		ret = sprintf(accdet_log_buf, "ADDR[0x%x]=0x%x\n",
+				i, pmic_read(i));
+		if (ret < 0)
+			pr_notice("sprintf failed\n");
 		strncat(buf, accdet_log_buf, strlen(accdet_log_buf));
 	}
 
-	sprintf(accdet_log_buf, "[0x%x]=0x%x\n",
+	ret = sprintf(accdet_log_buf, "[0x%x]=0x%x\n",
 		TOP_CKPDN_CON0, pmic_read(TOP_CKPDN_CON0));
+	if (ret < 0)
+		pr_notice("sprintf failed\n");
 	strncat(buf, accdet_log_buf, strlen(accdet_log_buf));
 
-	sprintf(accdet_log_buf, "[0x%x]=0x%x\n",
+	ret = sprintf(accdet_log_buf, "[0x%x]=0x%x\n",
 		AUD_TOP_RST_CON0, pmic_read(AUD_TOP_RST_CON0));
+	if (ret < 0)
+		pr_notice("sprintf failed\n");
 	strncat(buf, accdet_log_buf, strlen(accdet_log_buf));
 
-	sprintf(accdet_log_buf, "[0x%x]=0x%x, [0x%x]=0x%x, [0x%x]=0x%x\n",
+	ret = sprintf(accdet_log_buf, "[0x%x]=0x%x, [0x%x]=0x%x, [0x%x]=0x%x\n",
 		AUD_TOP_INT_CON0, pmic_read(AUD_TOP_INT_CON0),
 		AUD_TOP_INT_MASK_CON0, pmic_read(AUD_TOP_INT_MASK_CON0),
 		AUD_TOP_INT_STATUS0, pmic_read(AUD_TOP_INT_STATUS0));
+	if (ret < 0)
+		pr_notice("sprintf failed\n");
 	strncat(buf, accdet_log_buf, strlen(accdet_log_buf));
 
-	sprintf(accdet_log_buf,
+	ret = sprintf(accdet_log_buf,
 		"[0x%x]=0x%x,[0x%x]=0x%x,[0x%x]=0x%x,[0x%x]=0x%x\n",
 		AUDENC_ANA_CON6, pmic_read(AUDENC_ANA_CON6),
 		AUDENC_ANA_CON9, pmic_read(AUDENC_ANA_CON9),
 		AUDENC_ANA_CON10, pmic_read(AUDENC_ANA_CON10),
 		AUDENC_ANA_CON11, pmic_read(AUDENC_ANA_CON11));
+	if (ret < 0)
+		pr_notice("sprintf failed\n");
 	strncat(buf, accdet_log_buf, strlen(accdet_log_buf));
 
-	sprintf(accdet_log_buf, "[0x%x]=0x%x, [0x%x]=0x%x\n",
+	ret = sprintf(accdet_log_buf, "[0x%x]=0x%x, [0x%x]=0x%x\n",
 		AUXADC_RQST0, pmic_read(AUXADC_RQST0),
 		AUXADC_ACCDET, pmic_read(AUXADC_ACCDET));
+	if (ret < 0)
+		pr_notice("sprintf failed\n");
 	strncat(buf, accdet_log_buf, strlen(accdet_log_buf));
 
-	sprintf(accdet_log_buf,
+	ret = sprintf(accdet_log_buf,
 		"dtsInfo:deb0=0x%x,deb1=0x%x,deb3=0x%x,deb4=0x%x\n",
 		 cust_pwm_deb->debounce0, cust_pwm_deb->debounce1,
 		 cust_pwm_deb->debounce3, cust_pwm_deb->debounce4);
+	if (ret < 0)
+		pr_notice("sprintf failed\n");
 	strncat(buf, accdet_log_buf, strlen(accdet_log_buf));
 }
 
@@ -603,12 +634,15 @@ static ssize_t set_headset_mode_store(struct device_driver *ddri,
 static ssize_t state_show(struct device_driver *ddri, char *buf)
 {
 	char temp_type = (char)cable_type;
+	int ret = 0;
 
 	if (buf == NULL) {
 		pr_notice("[%s] *buf is NULL!\n",  __func__);
 		return -EINVAL;
 	}
-	snprintf(buf, 3, "%d\n", temp_type);
+	ret = snprintf(buf, 3, "%d\n", temp_type);
+	if (ret < 0)
+		pr_notice("snprintf failed\n");
 
 	return strlen(buf);
 }
@@ -856,12 +890,12 @@ static void send_key_event(u32 keycode, u32 flag)
 {
 	switch (keycode) {
 	case DW_KEY:
-		input_report_key(accdet_input_dev, KEY_VOLUMEDOWN, flag);
+		input_report_key(accdet_input_dev, BTN_2, flag);
 		input_sync(accdet_input_dev);
 		pr_debug("accdet KEY_VOLUMEDOWN %d\n", flag);
 		break;
 	case UP_KEY:
-		input_report_key(accdet_input_dev, KEY_VOLUMEUP, flag);
+		input_report_key(accdet_input_dev, BTN_1, flag);
 		input_sync(accdet_input_dev);
 		pr_debug("accdet KEY_VOLUMEUP %d\n", flag);
 		break;
@@ -895,6 +929,9 @@ static void send_accdet_status_event(u32 cable_type, u32 status)
 		input_sync(accdet_input_dev);
 		pr_info("%s HEADPHONE(3-pole) %s\n", __func__,
 			status ? "PlugIn" : "PlugOut");
+#ifdef CONFIG_SWITCH
+		switch_set_state(&accdet_data, status == 0 ? NO_DEVICE : cable_type);
+#endif
 		break;
 	case HEADSET_MIC:
 		/* when plug 4-pole out, 3-pole plug out should also be
@@ -908,6 +945,9 @@ static void send_accdet_status_event(u32 cable_type, u32 status)
 		input_sync(accdet_input_dev);
 		pr_info("%s MICROPHONE(4-pole) %s\n", __func__,
 			status ? "PlugIn" : "PlugOut");
+#ifdef CONFIG_SWITCH
+		switch_set_state(&accdet_data, status == 0 ? NO_DEVICE : cable_type);
+#endif
 		break;
 	case LINE_OUT_DEVICE:
 		input_report_switch(accdet_input_dev, SW_LINEOUT_INSERT,
@@ -1199,28 +1239,12 @@ static void dis_micbias_work_callback(struct work_struct *work)
 }
 #endif /* end of #if PMIC_ACCDET_KERNEL */
 
-//prize wyq 20191226 add for type earphone-start
-#if defined(CONFIG_PRIZE_SWITCH_SGM3798_SUPPORT)&&!defined(CONFIG_PRIZE_TYPEC_ACCDET)
-extern void typec_pinctrl_mic_reverse(void);
-#endif
-//prize wyq 20191226 add for type earphone-end
-//prize added by huarui, headset support, 20190111-start
-#if defined(CONFIG_PRIZE_SWITCH_SGM3798_SUPPORT)&&defined(CONFIG_PRIZE_TYPEC_ACCDET)
-extern int typec_accdet_mic_detect(void);
-#endif
-//prize added by huarui, headset support, 20190111-end
-
 #if PMIC_ACCDET_KERNEL
 static void eint_work_callback(struct work_struct *work)
 #else
 static void eint_work_callback(void)
 #endif
 {
-	//prize wyq 20191226 add for type earphone-start
-#if defined(CONFIG_PRIZE_SWITCH_SGM3798_SUPPORT)&&!defined(CONFIG_PRIZE_TYPEC_ACCDET)
-	int vol_val = 0;
-#endif
-	//prize wyq 20191226 add for type earphone-end
 	pr_info("accdet %s(),DCC EINT func\n", __func__);
 
 	if (cur_eint_state == EINT_PIN_PLUG_IN) {
@@ -1248,21 +1272,6 @@ static void eint_work_callback(void)
 #else
 		enable_accdet(ACCDET_PWM_EN);
 #endif
-	//prize wyq 20191226 add for type earphone-start
-	#if defined(CONFIG_PRIZE_SWITCH_SGM3798_SUPPORT)&&!defined(CONFIG_PRIZE_TYPEC_ACCDET)
-		mdelay(2);
-		vol_val = pmic_get_auxadc_value(AUXADC_LIST_ACCDET);
-		printk("PRIZE AccdetVolt(%d) mic_pin reverse threshold(300)\n",vol_val);
-		if (vol_val < 300){
-			typec_pinctrl_mic_reverse();
-		}
-	#endif
-	//prize wyq 20191226 add for type earphone-start
-//prize added by huarui, headset support, 20190111-start
-	#if defined(CONFIG_PRIZE_SWITCH_SGM3798_SUPPORT)&&defined(CONFIG_PRIZE_TYPEC_ACCDET)
-		typec_accdet_mic_detect();
-	#endif
-//prize added by huarui, headset support, 20190111-end
 	} else {
 		pr_info("accdet cur:plug-out, cur_eint_state = %d\n",
 			cur_eint_state);
@@ -1654,8 +1663,8 @@ void accdet_irq_handle(void)
 {
 	u32 eintID = 0;
 	u32 irq_status;
-#ifdef CONFIG_ACCDET_EINT_IRQ
 	unsigned int moisture_vol = 0;
+#ifdef CONFIG_ACCDET_EINT_IRQ
 	eintID = get_triggered_eint();
 #endif
 	irq_status = pmic_read(ACCDET_IRQ_STS);
@@ -2288,7 +2297,17 @@ int mt_accdet_probe(struct platform_device *dev)
 	int ret;
 	struct platform_driver accdet_driver_hal = accdet_driver_func();
 
+#ifdef CONFIG_SWITCH
 	pr_info("%s() begin!\n", __func__);
+	accdet_data.name = "h2w";
+	accdet_data.index = 0;
+	accdet_data.state = 0;
+	ret = switch_dev_register(&accdet_data);
+	if (ret) {
+		pr_notice("%s switch_dev_register fail:%d!\n", __func__, ret);
+		return -1;
+	}
+#endif
 
 	/* register char device number, Create normal device for auido use */
 	ret = alloc_chrdev_region(&accdet_devno, 0, 1, ACCDET_DEVNAME);
@@ -2341,6 +2360,8 @@ int mt_accdet_probe(struct platform_device *dev)
 	__set_bit(KEY_VOLUMEDOWN, accdet_input_dev->keybit);
 	__set_bit(KEY_VOLUMEUP, accdet_input_dev->keybit);
 	__set_bit(KEY_VOICECOMMAND, accdet_input_dev->keybit);
+	__set_bit(BTN_1, accdet_input_dev->keybit);
+	__set_bit(BTN_2, accdet_input_dev->keybit);
 
 	__set_bit(EV_SW, accdet_input_dev->evbit);
 	__set_bit(SW_HEADPHONE_INSERT, accdet_input_dev->swbit);
@@ -2371,8 +2392,12 @@ int mt_accdet_probe(struct platform_device *dev)
 	/* the third argument may include TIMER_* flags */
 
 	/* wake lock */
-	accdet_irq_lock = wakeup_source_register("accdet_irq_lock");
-	accdet_timer_lock = wakeup_source_register("accdet_timer_lock");
+	accdet_irq_lock = wakeup_source_register(NULL, "accdet_irq_lock");
+	if (!accdet_irq_lock)
+		return -ENOMEM;
+	accdet_timer_lock = wakeup_source_register(NULL, "accdet_timer_lock");
+	if (!accdet_timer_lock)
+		return -ENOMEM;
 
 	/* Create workqueue */
 	accdet_workqueue = create_singlethread_workqueue("accdet");
@@ -2511,64 +2536,3 @@ long mt_accdet_unlocked_ioctl(struct file *file, unsigned int cmd,
 	}
 	return 0;
 }
-
-//prize wyq 20191226 add for type earphone-start
-#if !defined(CONFIG_PRIZE_NO_PRIZE_TYPEC)
-//#ifdef CONFIG_USB_C_SWITCH
-void accdet_report_headset_extern(int state)
-{
-		printk("[Accdet]Enter accdet_report_headset_extern !!!!!!\n");
-	if (state) {
-		cable_type = HEADSET_NO_MIC;
-		send_accdet_status_event(cable_type, state);
-	} else {
-		//prize wyq 20191218
-		/* send input event before cable_type switch to no_device, which is invalid type for input */
-		send_accdet_status_event(cable_type, state);
-		cable_type = NO_DEVICE;
-	}
-	//switch_set_state((struct switch_dev *)&accdet_data, s_cable_type);
-	return;
-}
-EXPORT_SYMBOL(accdet_report_headset_extern);
-void accdet_eint_func_extern(int state)
-{
-	int ret = 0;
-	printk("[Accdet]Enter accdet_eint_func_extern !!!!!!\n");
-	cur_eint_state = state;
-	if (cur_eint_state == EINT_PIN_PLUG_IN)
-	{
-		mod_timer(&micbias_timer, jiffies + MICBIAS_DISABLE_TIMER);
-	}
-	printk("[Accdet]accdet_eint_func after cur_eint_state=%d\n", cur_eint_state);
-	ret = queue_work(eint_workqueue, &eint_work);
-	
-	accdet_report_headset_extern(state);
-	return;
-}
-EXPORT_SYMBOL(accdet_eint_func_extern);
-#endif
-//#endif
-//prize wyq 20191226 add for type earphone-end
-
-//prize added by huarui, headset support, 20190111-start
-#if defined(CONFIG_PRIZE_TYPEC_ACCDET)
-void accdet_eint_func_extern(int state)
-{
-	int ret = 0;
-
-	if (state == EINT_PIN_PLUG_OUT){	//OUT=0 IN=1
-		cur_eint_state = EINT_PIN_PLUG_OUT;
-		mod_timer(&micbias_timer, jiffies + MICBIAS_DISABLE_TIMER);
-	}else{
-		cur_eint_state = EINT_PIN_PLUG_IN;
-	}
-
-	pr_info("accdet %s(), cur_eint_state=%d\n", __func__, cur_eint_state);
-	ret = queue_work(eint_workqueue, &eint_work);
-	return;
-}
-EXPORT_SYMBOL(accdet_eint_func_extern);
-#endif
-//prize added by huarui, headset support, 20190111-end
-

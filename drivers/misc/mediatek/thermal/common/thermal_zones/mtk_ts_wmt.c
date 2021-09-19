@@ -1,5 +1,6 @@
 /*
  * Copyright (C) 2017 MediaTek Inc.
+ * Copyright (C) 2021 XiaoMi, Inc.
  *
  * This program is free software: you can redistribute it and/or modify
  * it under the terms of the GNU General Public License version 2 as
@@ -119,8 +120,8 @@ static unsigned int tm_wfd_stat;
 static struct task_struct *pg_task;
 
 /* + Cooler info + */
-static int g_num_trip;
-static char g_bind0[20] = { 0 };
+static int g_num_trip = 1;
+static char g_bind0[20] = "mtktswmt-sysrst";
 static char g_bind1[20] = { 0 };
 static char g_bind2[20] = { 0 };
 static char g_bind3[20] = { 0 };
@@ -145,7 +146,7 @@ static int polling_factor2 = 10;
 static unsigned int cl_dev_state;
 static unsigned int cl_pa1_dev_state;
 static unsigned int cl_pa2_dev_state;
-static unsigned int g_trip_temp[COOLER_NUM] = { 125000, 115000, 105000, 85000,
+static unsigned int g_trip_temp[COOLER_NUM] = { 120000, 115000, 105000, 85000,
 							0, 0, 0, 0, 0, 0 };
 
 /* static int g_thro[COOLER_THRO_NUM] =
@@ -1358,7 +1359,7 @@ struct file *filp, const char __user *buf, size_t len, loff_t *data)
 		min_wifi_tput, tt_wifi_high,
 		tt_wifi_low, tp_wifi_rise, tp_wifi_fall);
 
-	if (sensor_select < 0 || sensor_select >= NR_TS_SENSORS) {
+	if (ret != 14 || sensor_select < 0 || sensor_select >= NR_TS_SENSORS) {
 		#ifdef CONFIG_MTK_AEE_FEATURE
 		aee_kernel_warning_api(__FILE__, __LINE__, DB_OPT_DEFAULT,
 					"%s ",	__func__);

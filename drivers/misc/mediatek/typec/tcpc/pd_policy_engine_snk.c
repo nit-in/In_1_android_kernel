@@ -17,7 +17,6 @@
 #include "inc/pd_dpm_core.h"
 #include "inc/tcpci.h"
 #include "inc/pd_policy_engine.h"
-#include <mt-plat/charger_type.h>
 
 /*
  * [PD2.0] Figure 8-39 Sink Port state diagram
@@ -58,31 +57,10 @@ void pe_snk_startup_entry(struct pd_port *pd_port)
 	pd_put_pe_event(pd_port, PD_PE_RESET_PRL_COMPLETED);
 }
 
-/*prize add by sunshuai for A-C 30w charge 20201109-start */
-#ifdef CONFIG_PRIZE_ATOC_TYPEC_CHARGE
 void pe_snk_discovery_entry(struct pd_port *pd_port)
 {
 	pd_enable_vbus_valid_detection(pd_port, true);
 }
-#else
-void pe_snk_discovery_entry(struct pd_port *pd_port)
-{
-	unsigned long timeout;
-	enum charger_type chg_type;
-
-	pd_enable_vbus_valid_detection(pd_port, true);
-
-	timeout = jiffies + msecs_to_jiffies(1000);
-	do {
-		chg_type = mt_get_charger_type();
-		msleep(50);
-	} while (chg_type == CHARGER_UNKNOWN && time_before(jiffies, timeout));
-
-	if (chg_type == CHARGER_UNKNOWN)
-		PE_INFO("BC1.2 TIMEOUT\r\n");
-}
-#endif/*CONFIG_PRIZE_ATOC_TYPEC_CHARGE */
-/*prize add by sunshuai for A-C 30w charge 20201109-end */
 
 void pe_snk_wait_for_capabilities_entry(
 				struct pd_port *pd_port)

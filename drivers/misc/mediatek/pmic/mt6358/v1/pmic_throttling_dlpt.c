@@ -1,5 +1,6 @@
 /*
  * Copyright (C) 2018 MediaTek Inc.
+ * Copyright (C) 2021 XiaoMi, Inc.
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License version 2 as
@@ -123,7 +124,7 @@ void register_low_battery_notify(
 {
 	PMICLOG("[%s] start\n", __func__);
 
-	lbcb_tb[prio_val].lbcb = low_battery_callback;
+	lbcb_tb[(unsigned int)prio_val].lbcb = low_battery_callback;
 
 	pr_info("[%s] prio_val=%d\n", __func__, prio_val);
 }
@@ -292,7 +293,7 @@ void register_battery_oc_notify(
 {
 	PMICLOG("[%s] start\n", __func__);
 
-	occb_tb[prio_val].occb = battery_oc_callback;
+	occb_tb[(unsigned int)prio_val].occb = battery_oc_callback;
 
 	pr_info("[%s] prio_val=%d\n", __func__, prio_val);
 }
@@ -459,7 +460,7 @@ void register_battery_percent_notify(
 {
 	PMICLOG("[%s] start\n", __func__);
 
-	bpcb_tb[prio_val].bpcb = battery_percent_callback;
+	bpcb_tb[(unsigned int)prio_val].bpcb = battery_percent_callback;
 
 	pr_info("[%s] prio_val=%d\n", __func__, prio_val);
 
@@ -781,7 +782,7 @@ void register_dlpt_notify(
 {
 	PMICLOG("[%s] start\n", __func__);
 
-	dlpt_cb_tb[prio_val].dlpt_cb = dlpt_callback;
+	dlpt_cb_tb[(unsigned int)prio_val].dlpt_cb = dlpt_callback;
 
 	pr_info("[%s] prio_val=%d\n", __func__, prio_val);
 
@@ -1794,7 +1795,7 @@ int pmic_throttling_dlpt_init(struct platform_device *pdev)
 
 	path = "/battery";
 	np = of_find_node_by_path(path);
-	if (of_property_read_u32(np, "CAR_TUNE_VALUE", &val) == 0) {
+	if (of_property_read_u32(np, "CAR_TUNE_VALUE1", &val) == 0) {
 		fg_cust_data.car_tune_value = (int)val*10;
 		pr_info("Get car_tune_value from DT: %d\n"
 			, fg_cust_data.car_tune_value);

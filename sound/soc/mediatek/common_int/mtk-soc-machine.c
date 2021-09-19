@@ -84,7 +84,6 @@
 
 #include "mtk-soc-codec-63xx.h"
 #include <linux/clk.h>
-#include <linux/debugfs.h>
 #include <linux/delay.h>
 #include <linux/gpio.h>
 #include <linux/platform_device.h>
@@ -101,6 +100,9 @@
 #if defined(CONFIG_SND_SOC_CS35L35)
 #include "mtk-cs35l35-machine-ops.h"
 #endif
+
+#ifdef CONFIG_DEBUG_FS
+#include <linux/debugfs.h>
 
 static struct dentry *mt_sco_audio_debugfs;
 #define DEBUG_FS_NAME "mtksocaudio"
@@ -304,6 +306,7 @@ static const struct file_operations mtaudio_debug_ops = {
 static const struct file_operations mtaudio_ana_debug_ops = {
 	.open = mt_soc_ana_debug_open, .read = mt_soc_ana_debug_read,
 };
+#endif
 
 /* snd_soc_ops */
 static int mt_machine_trigger(struct snd_pcm_substream *substream, int cmd)
@@ -548,7 +551,7 @@ static struct snd_soc_dai_link mt_soc_dai_common[] = {
 		.codec_name = MT_SOC_CODEC_DUMMY_NAME,
 	},
 #endif
-#ifdef CONFIG_MTK_AUDIO_TUNNELING_SUPPORT
+#ifdef CONFIG_SND_SOC_MTK_AUDIO_DSP
 	{
 		.name = "OFFLOAD",
 		.stream_name = MT_SOC_OFFLOAD_STREAM_NAME,
@@ -622,19 +625,6 @@ static struct snd_soc_dai_link mt_soc_dai_common[] = {
 		.codec_name = "snd-soc-dummy",
 	},
 #endif
-// prize add by huarui, add igo ig1202 codec, 20200103 start
-#if defined(CONFIG_SND_SOC_DEBUSSY)
-	{
-		.name = "debussy",
-		.stream_name = "INTELLIGO_DEBUSSY",
-		.cpu_dai_name = "snd-soc-dummy-dai",
-		.platform_name = "snd-soc-dummy",
-		.codec_dai_name = "debussy-aif",
-		.codec_name = "debussy.6-005d",
-		.ops = &mt_machine_audio_ops,
-	},
-#endif
-// prize add by huarui, add igo ig1202 codec, 20200103 end
 };
 
 #ifdef CONFIG_SND_SOC_MTK_BTCVSD
@@ -687,12 +677,6 @@ static struct snd_soc_dai_link mt_soc_extspk_dai[] = {
 		.dai_fmt = SND_SOC_DAIFMT_I2S | SND_SOC_DAIFMT_CBS_CFS |
 			   SND_SOC_DAIFMT_NB_NF,
 		.ops = &cs35l35_ops,
-/*prize-add-pengzhipeng-20191014-start*/
-
-#elif defined(CONFIG_SND_SMARTPA_AW8898)
-		.codec_dai_name = "aw8898-aif",
-		.codec_name = "aw8898_smartpa",
-/*prize-add-pengzhipeng-20191014-end*/
 #else
 		.codec_dai_name = "snd-soc-dummy-dai",
 		.codec_name = "snd-soc-dummy",
@@ -735,8 +719,6 @@ static int mt_soc_snd_probe(struct platform_device *pdev)
 	struct device_node *btcvsd_node;
 	int ret;
 	int daiLinkNum = 0;
-/*prize-add-pengzhipeng-20191014-start*/
-#ifndef CONFIG_SND_SMARTPA_AW8898
 
 	ret = mtk_spk_update_dai_link(mt_soc_extspk_dai, pdev);
 	if (ret) {
@@ -744,8 +726,7 @@ static int mt_soc_snd_probe(struct platform_device *pdev)
 			__func__);
 		return -EINVAL;
 	}
-#endif
-/*prize-add-pengzhipeng-20191014-end*/
+
 	/*get_ext_dai_codec_name();*/
 	pr_debug("dai_link = %p\n",
 		mt_snd_soc_card_mt.dai_link);
@@ -789,6 +770,7 @@ static int mt_soc_snd_probe(struct platform_device *pdev)
 		dev_err(&pdev->dev, "%s snd_soc_register_card fail %d\n",
 			__func__, ret);
 
+#ifdef CONFIG_DEBUG_FS
 	/* create debug file */
 	mt_sco_audio_debugfs =
 		debugfs_create_file(DEBUG_FS_NAME, S_IFREG | 0444, NULL,
@@ -798,7 +780,7 @@ static int mt_soc_snd_probe(struct platform_device *pdev)
 	mt_sco_audio_debugfs = debugfs_create_file(
 		DEBUG_ANA_FS_NAME, S_IFREG | 0444, NULL,
 		(void *)DEBUG_ANA_FS_NAME, &mtaudio_ana_debug_ops);
-
+#endif
 	return ret;
 }
 

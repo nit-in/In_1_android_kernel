@@ -1,5 +1,6 @@
 /*
  * Copyright (C) 2016 MediaTek Inc.
+ * Copyright (C) 2021 XiaoMi, Inc.
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License version 2 as
@@ -20,12 +21,6 @@
 #include <SCP_sensorHub.h>
 #include "SCP_power_monitor.h"
 #include <linux/pm_wakeup.h>
-/* begin, prize-lifenfen-20181126, add for sensorhub hardware info */
-#if defined(CONFIG_PRIZE_HARDWARE_INFO)
-#include "../../../hardware_info/hardware_info.h"
-extern struct hardware_info current_alsps_info;
-#endif
-/* end, prize-lifenfen-20181126, add for sensorhub hardware info */
 
 
 #define ALSPSHUB_DEV_NAME     "alsps_hub_pl"
@@ -294,46 +289,13 @@ static void alspshub_init_done_work(struct work_struct *work)
 #ifndef MTK_OLD_FACTORY_CALIBRATION
 	int32_t cfg_data[2] = {0};
 #endif
-	/* begin, prize-lifenfen-20181126, add for sensorhub hardware info */
-#if defined(CONFIG_SENSORHUB_PRIZE_HARDWARE_INFO)
-	struct sensor_hardware_info_t deviceinfo;
-#endif
-	pr_info("%s first_ready_after_boot = %d +\n", __func__, atomic_read(&obj->first_ready_after_boot));
-	/* end, prize-lifenfen-20181126, add for sensorhub hardware info */
 
 	if (atomic_read(&obj->scp_init_done) == 0) {
 		pr_err("wait for nvram to set calibration\n");
 		return;
 	}
-
-/* begin, prize-lifenfen-20181126, first_ready_after_boot default is 0, this case will always be true */
-#if 0
 	if (atomic_xchg(&obj->first_ready_after_boot, 1) == 0)
-#else
-	if (atomic_xchg(&obj->first_ready_after_boot, 1) == 1)
-#endif
-/* end, prize-lifenfen-20181126, first_ready_after_boot default is 0, this case will always be true */
 		return;
-
-/* begin, prize-lifenfen-20181126, add for sensorhub hardware info */
-#if defined(CONFIG_SENSORHUB_PRIZE_HARDWARE_INFO)
-	err = sensorHub_get_hardware_info(ID_PROXIMITY, &deviceinfo);
-	if (err < 0)
-		pr_err("sensorHub_get_hardware_info ID_PROXIMITY fail\n");
-	else
-	{
-		#if defined(CONFIG_PRIZE_HARDWARE_INFO)
-		strlcpy(current_alsps_info.chip, deviceinfo.chip, sizeof(current_alsps_info.chip));
-		strlcpy(current_alsps_info.vendor, deviceinfo.vendor, sizeof(current_alsps_info.vendor));
-		strlcpy(current_alsps_info.id, deviceinfo.id, sizeof(current_alsps_info.id));
-		strlcpy(current_alsps_info.more, deviceinfo.more, sizeof(current_alsps_info.more));
-		#endif
-		pr_info("sensorHub_get_hardware_info ID_PROXIMITY ok\n");
-	}
-#endif
-	pr_info("%s first_ready_after_boot = %d -\n", __func__, atomic_read(&obj->first_ready_after_boot));
-/* end, prize-lifenfen-20181126, add for sensorhub hardware info */
-
 #ifdef MTK_OLD_FACTORY_CALIBRATION
 	err = sensor_set_cmd_to_hub(ID_PROXIMITY,
 		CUST_ACTION_SET_CALI, &obj->ps_cali);
@@ -491,6 +453,19 @@ static int alshub_factory_set_cali(int32_t offset)
 	return err;
 
 }
+
+
+static int alshub_factory_set_cali_0lux(int32_t offset)
+{
+	int err = 0;
+	int32_t cfg_data;
+
+	cfg_data = offset;
+	als_0lux_cali_report(&cfg_data);
+	return err;
+
+}
+
 static int alshub_factory_get_cali(int32_t *offset)
 {
 	struct alspshub_ipi_data *obj = obj_ipi_data;
@@ -498,6 +473,21 @@ static int alshub_factory_get_cali(int32_t *offset)
 	*offset = atomic_read(&obj->als_cali);
 	return 0;
 }
+
+static int pshub_factory_set_factory_flag(int32_t flag)
+{
+	int res = 0;
+
+	res = sensor_set_cmd_to_hub(ID_PROXIMITY, CUST_ACTION_SET_FACTORY, &flag);
+	if (res < 0) {
+		pr_err("sensor_set_cmd_to_hub fail,(ID: %d),(action: %d)\n",
+			ID_PROXIMITY, CUST_ACTION_SET_FACTORY);
+		return 0;
+	}
+
+	return res;
+}
+
 static int pshub_factory_enable_sensor(bool enable_disable,
 			int64_t sample_periods_ms)
 {
@@ -639,7 +629,9 @@ static struct alsps_factory_fops alspshub_factory_fops = {
 	.als_clear_cali = alshub_factory_clear_cali,
 	.als_set_cali = alshub_factory_set_cali,
 	.als_get_cali = alshub_factory_get_cali,
+	.als_set_cali_0lux = alshub_factory_set_cali_0lux,
 
+	.ps_set_factory_flag = pshub_factory_set_factory_flag,
 	.ps_enable_sensor = pshub_factory_enable_sensor,
 	.ps_get_data = pshub_factory_get_data,
 	.ps_get_raw_data = pshub_factory_get_raw_data,

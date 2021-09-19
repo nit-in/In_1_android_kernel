@@ -254,7 +254,6 @@ static struct rt9467_desc rt9467_default_desc = {
 	.chg_dev_name = "primary_chg",
 	.ceb_invert = false,
 };
-static unsigned int GPIO_OTG_EN;  /*prize liaoxingen modify otg 20200903  */
 
 struct rt9467_info {
 	struct i2c_client *client;
@@ -2501,14 +2500,6 @@ static int rt9467_parse_dt(struct rt9467_info *info, struct device *dev)
 	if (of_property_read_u32(np, "ircmp_vclamp", &desc->ircmp_vclamp) < 0)
 		dev_notice(info->dev, "%s: no ircmp vclamp\n", __func__);
 
- /*prize liaoxingen modify otg 20200903 start */
-    GPIO_OTG_EN = of_get_named_gpio(np, "otgen-gpio", 0);
-    pr_err("%s: GPIO_OTG_EN=%d\n", __func__,GPIO_OTG_EN);
-    ret = gpio_request(GPIO_OTG_EN, "otgen_gpio");
-    if(ret < 0)
-        pr_err("%s: otgen-gpio request failed\n", __func__);
- /*prize liaoxingen modify otg 20200903 end */
-
 	desc->en_te = of_property_read_bool(np, "en_te");
 	desc->en_wdt = of_property_read_bool(np, "en_wdt");
 	desc->en_irq_pulse = of_property_read_bool(np, "en_irq_pulse");
@@ -2594,7 +2585,6 @@ static int rt9467_enable_otg(struct charger_device *chg_dev, bool en)
 	u8 lg_slew_rate = en ? 0xCC : 0xC3;
 
 	dev_info(info->dev, "%s: en = %d\n", __func__, en);
-    gpio_direction_output(GPIO_OTG_EN,en);          /*prize liaoxingen modify otg 20200903  */
 
 	rt9467_enable_hidden_mode(info, true);
 
@@ -3409,12 +3399,6 @@ static int rt9467_plug_out(struct charger_device *chg_dev)
 		if (ret < 0)
 			dev_notice(info->dev, "%s: en hz of sec chg fail\n",
 				__func__);
-           } else {
-               mutex_lock(&info->ichg_access_lock);
-               mutex_lock(&info->ieoc_lock);
-               __rt9467_set_ieoc(info, 150000);
-               mutex_unlock(&info->ieoc_lock);
-               mutex_unlock(&info->ichg_access_lock);
 	}
 
 	return ret;
@@ -3550,35 +3534,6 @@ static int rt9467_do_event(struct charger_device *chg_dev, u32 event, u32 args)
 	return 0;
 }
 
-static int rt9467_safety_check(struct charger_device *chg_dev, u32 polling_ieoc)
-{
-
-	int ret = 0, adc_ibat = 0;
-	static int eoc_cnt;
-	struct rt9467_info *info = dev_get_drvdata(&chg_dev->dev);
-
-	dev_info(info->dev, "%s\n", __func__);
-
-	ret = rt9467_get_adc(info, RT9467_ADC_IBAT, &adc_ibat);
-
-	if (ret < 0)
-		dev_err(info->dev, "%s: failed, ret = %d\n", __func__, ret);
-
-	if (adc_ibat <= polling_ieoc)
-		eoc_cnt++;
-	else
-		eoc_cnt = 0;
-
-	/* If ibat is less than polling_ieoc for 3 times, trigger EOC event */
-	if (eoc_cnt == 3) {
-		dev_info(info->dev, "%s: polling_ieoc = %d, ibat = %d\n",
-			 __func__, polling_ieoc, adc_ibat);
-		charger_dev_notify(info->chg_dev, CHARGER_DEV_NOTIFY_EOC);
-		eoc_cnt = 0;
-	}
-	return ret;
-}
-
 static struct charger_ops rt9467_chg_ops = {
 	/* Normal charging */
 	.plug_in = rt9467_plug_in,
@@ -3602,7 +3557,6 @@ static struct charger_ops rt9467_chg_ops = {
 	.set_eoc_current = rt9467_set_ieoc,
 	.enable_termination = rt9467_enable_te,
 	.run_aicl = rt9467_run_aicl,
-	.safety_check = rt9467_safety_check,
 	.reset_eoc_state = rt9467_reset_eoc_state,
 
 	/* Safety timer */

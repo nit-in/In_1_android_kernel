@@ -31,6 +31,7 @@
 #define GPIOF_EXPORT_DIR_FIXED	(GPIOF_EXPORT)
 #define GPIOF_EXPORT_DIR_CHANGEABLE (GPIOF_EXPORT | GPIOF_EXPORT_CHANGEABLE)
 
+#define GPIOF_CAM_SUB2_ID	79
 /**
  * struct gpio - a structure describing a GPIO with configuration
  * @gpio:	the GPIO number
@@ -228,30 +229,6 @@ static inline int irq_to_gpio(unsigned irq)
 	/* irq can never have been returned from gpio_to_irq() */
 	WARN_ON(1);
 	return -EINVAL;
-}
-
-static inline int
-gpiochip_add_pin_range(struct gpio_chip *chip, const char *pinctl_name,
-		       unsigned int gpio_offset, unsigned int pin_offset,
-		       unsigned int npins)
-{
-	WARN_ON(1);
-	return -EINVAL;
-}
-
-static inline int
-gpiochip_add_pingroup_range(struct gpio_chip *chip,
-			struct pinctrl_dev *pctldev,
-			unsigned int gpio_offset, const char *pin_group)
-{
-	WARN_ON(1);
-	return -EINVAL;
-}
-
-static inline void
-gpiochip_remove_pin_ranges(struct gpio_chip *chip)
-{
-	WARN_ON(1);
 }
 
 static inline int devm_gpio_request(struct device *dev, unsigned gpio,

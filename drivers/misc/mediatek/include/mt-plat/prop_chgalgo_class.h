@@ -10,10 +10,10 @@
  * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
  * See http://www.gnu.org/licenses/gpl-2.0.html for more details.
  */
-#ifdef CONFIG_MTK_PUMP_EXPRESS_PLUS_50_SUPPORT
-/*prize-huangjiwu-20200730, add for rt9759 pe50 start*/
+
 #ifndef __LINUX_PROP_CHGALGO_CLASS_H
 #define __LINUX_PROP_CHGALGO_CLASS_H
+
 #include <linux/device.h>
 #include <linux/notifier.h>
 
@@ -338,5 +338,3 @@ prop_chgalgo_set_jeita_vbat_cv(struct prop_chgalgo_device *pca, int mV)
 }
 #endif /* CONFIG_RT_PROP_CHGALGO */
 #endif /* __LINUX_PROP_CHGALGO_CLASS_H */
-/*prize-huangjiwu-20200730, add for rt9759 pe50 end*/
-#endif

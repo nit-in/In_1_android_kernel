@@ -2,6 +2,7 @@
  * MUSB OTG driver host support
  *
  * Copyright 2005 Mentor Graphics Corporation
+ * Copyright (C) 2021 XiaoMi, Inc.
  * Copyright (C) 2005-2006 by Texas Instruments
  * Copyright (C) 2006-2007 Nokia Corporation
  * Copyright (C) 2008-2009 MontaVista Software, Inc. <source@mvista.com>
@@ -2879,7 +2880,7 @@ static int
 
 #ifdef CONFIG_MTK_MUSB_QMU_SUPPORT
 	if (urb->dev->devnum)
-		musb_host_active_dev_add(urb->dev->devnum);
+		musb_host_active_dev_add((unsigned int)urb->dev->devnum);
 #endif
 
 
@@ -3135,10 +3136,12 @@ static int musb_urb_dequeue(struct usb_hcd *hcd, struct urb *urb, int status)
 				qh);
 
 	if (pos < 256) {
-		snprintf(info + pos, 256 - pos, ",rdy<%d>,prev<%d>,cur<%d>",
+		ret = snprintf(info + pos, 256 - pos, ",rdy<%d>,prev<%d>,cur<%d>",
 				qh->is_ready,
 				urb->urb_list.prev != &qh->hep->urb_list,
 				musb_ep_get_qh(qh->hw_ep, is_in) == qh);
+		if (ret < 0)
+			DBG(0, "ret<%d>\n", ret);
 	}
 
 	if (strstr(current->comm, "usb_call"))

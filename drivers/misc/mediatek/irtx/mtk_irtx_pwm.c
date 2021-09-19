@@ -1,5 +1,6 @@
 /*
  * Copyright (C) 2019 MediaTek Inc.
+ * Copyright (C) 2021 XiaoMi, Inc.
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License version 2 as
@@ -99,7 +100,7 @@ void switch_irtx_gpio(int mode)
 	struct pinctrl *ppinctrl_irtx = mt_irtx_dev.ppinctrl_irtx;
 	struct pinctrl_state *pins_irtx = NULL;
 
-	if (mode >= (ARRAY_SIZE(irtx_gpio_cfg))) {
+	if (mode < 0 || mode >= (ARRAY_SIZE(irtx_gpio_cfg))) {
 		pr_notice("%s() [PinC](%d) fail!! - invalid parameter!\n",
 			__func__, mode);
 		return;
@@ -191,7 +192,7 @@ static ssize_t dev_char_write(struct file *file, const char __user *buf,
 	int total_time = 0;
 	int *buf_ptr;
 
-	pr_info("%s() irtx write len=0x%x, pwm=%d\n", __func__,
+	printk("%s() --lyd, irtx write len=0x%x, pwm=%d\n", __func__,
 		(unsigned int)count, (unsigned int)irtx_pwm_config.pwm_no);
 	if (count == 0) {
 		ret = 0;
@@ -376,9 +377,12 @@ static int irtx_probe(struct platform_device *plat_dev)
 
 	if (plat_dev->dev.of_node == NULL) {
 		pr_notice("%s() irtx OF node is NULL!\n", __func__);
+		printk("--lyd, %s() irtx OF node is NULL!\n", __func__);
 		ret = -1;
 		goto exit;
 	}
+
+	printk("[%s]: --lyd, enter probe......\n", __func__);
 
 	of_property_read_u32(plat_dev->dev.of_node, "major", &major);
 	of_property_read_u32(plat_dev->dev.of_node, "pwm_ch",

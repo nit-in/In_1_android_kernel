@@ -1,5 +1,6 @@
 /*
  * Copyright (C) 2015 MediaTek Inc.
+ * Copyright (C) 2021 XiaoMi, Inc.
  *
  * This program is free software: you can redistribute it and/or modify
  * it under the terms of the GNU General Public License version 2 as
@@ -402,6 +403,9 @@ int vcorefs_get_ddr_by_steps(u32 opp)
 
 char *governor_get_kicker_name(int id)
 {
+	if (id < 0)
+		return NULL;
+
 	return kicker_name[id];
 }
 EXPORT_SYMBOL(governor_get_kicker_name);

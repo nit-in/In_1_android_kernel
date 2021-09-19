@@ -10,8 +10,6 @@
  * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
  * See http://www.gnu.org/licenses/gpl-2.0.html for more details.
  */
-#ifdef CONFIG_MTK_PUMP_EXPRESS_PLUS_50_SUPPORT
-/*prize-huangjiwu-20200730, add for rt9759 pe50 start*/
 
 #ifndef __MTK_INTF_H
 #define __MTK_INTF_H
@@ -63,5 +61,3 @@ extern int enable_vbus_ovp(bool en);
 extern int wake_up_charger(void);
 
 #endif /* __MTK_INTF_H */
-/*prize-huangjiwu-20200730, add for rt9759 pe50 end*/
-#endif

@@ -1,6 +1,7 @@
 /* accelhub motion sensor driver
  *
  * Copyright (C) 2016 MediaTek Inc.
+ * Copyright (C) 2021 XiaoMi, Inc.
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License version 2 as
@@ -19,13 +20,6 @@
 #include <SCP_sensorHub.h>
 #include <accel.h>
 #include <hwmsensor.h>
-
-/* begin, prize-lifenfen-20181126, add for sensorhub hardware info */
-#if defined(CONFIG_PRIZE_HARDWARE_INFO)
-#include "../../../hardware_info/hardware_info.h"
-extern struct hardware_info current_gsensor_info;
-#endif
-/* end, prize-lifenfen-20181126, add for sensorhub hardware info */
 
 #define DEBUG 1
 #define SW_CALIBRATION
@@ -58,7 +52,7 @@ struct accelhub_ipi_data {
 	atomic_t first_ready_after_boot;
 	bool factory_enable;
 	bool android_enable;
-	struct completion calibration_done;
+//	struct completion calibration_done;
 	struct completion selftest_done;
 };
 
@@ -417,45 +411,13 @@ static void scp_init_work_done(struct work_struct *work)
 #ifndef MTK_OLD_FACTORY_CALIBRATION
 	int32_t cfg_data[6] = {0};
 #endif
-	/* begin, prize-lifenfen-20181126, add for sensorhub hardware info */
-#if defined(CONFIG_SENSORHUB_PRIZE_HARDWARE_INFO)
-	struct sensor_hardware_info_t deviceinfo;
-#endif
-	pr_info("%s first_ready_after_boot = %d +\n", __func__, atomic_read(&obj->first_ready_after_boot));
-	/* end, prize-lifenfen-20181126, add for sensorhub hardware info */
 
 	if (atomic_read(&obj->scp_init_done) == 0) {
 		pr_debug("scp is not ready to send cmd\n");
 		return;
 	}
-/* begin, prize-lifenfen-20181126, first_ready_after_boot default is 0, this case will always be true */
-#if 0
 	if (atomic_xchg(&obj->first_ready_after_boot, 1) == 0)
-#else
-	if (atomic_xchg(&obj->first_ready_after_boot, 1) == 1)
-#endif
-/* end, prize-lifenfen-20181126, first_ready_after_boot default is 0, this case will always be true */
 		return;
-
-/* begin, prize-lifenfen-20181126, add for sensorhub hardware info */
-#if defined(CONFIG_SENSORHUB_PRIZE_HARDWARE_INFO)
-	err = sensorHub_get_hardware_info(ID_ACCELEROMETER, &deviceinfo);
-	if (err < 0)
-		pr_err("sensorHub_get_hardware_info ID_ACCELEROMETER fail\n");
-	else
-	{
-		#if defined(CONFIG_PRIZE_HARDWARE_INFO)
-		strlcpy(current_gsensor_info.chip, deviceinfo.chip, sizeof(current_gsensor_info.chip));
-		strlcpy(current_gsensor_info.vendor, deviceinfo.vendor, sizeof(current_gsensor_info.vendor));
-		strlcpy(current_gsensor_info.id, deviceinfo.id, sizeof(current_gsensor_info.id));
-		strlcpy(current_gsensor_info.more, deviceinfo.more, sizeof(current_gsensor_info.more));
-		#endif
-		pr_info("sensorHub_get_hardware_info ID_ACCELEROMETER ok\n");
-	}
-#endif
-	pr_info("%s first_ready_after_boot = %d -\n", __func__, atomic_read(&obj->first_ready_after_boot));
-/* end, prize-lifenfen-20181126, add for sensorhub hardware info */
-
 #ifdef MTK_OLD_FACTORY_CALIBRATION
 	err = accelhub_WriteCalibration_scp(obj->static_cali);
 	if (err < 0)
@@ -524,7 +486,7 @@ static int gsensor_recv_data(struct data_unit_t *event, void *reserved)
 		obj->static_cali_status =
 			(uint8_t)event->accelerometer_t.status;
 		spin_unlock(&calibration_lock);
-		complete(&obj->calibration_done);
+		//complete(&obj->calibration_done);
 	} else if (event->flush_action == TEST_ACTION) {
 		atomic_set(&obj->selftest_status,
 			event->accelerometer_t.status);
@@ -598,7 +560,7 @@ static int gsensor_factory_set_cali(int32_t data[3])
 }
 static int gsensor_factory_get_cali(int32_t data[3])
 {
-	int err = 0;
+//	int err = 0;
 #ifndef MTK_OLD_FACTORY_CALIBRATION
 	struct accelhub_ipi_data *obj = obj_ipi_data;
 	uint8_t status = 0;
@@ -611,12 +573,14 @@ static int gsensor_factory_get_cali(int32_t data[3])
 		return -1;
 	}
 #else
-	err = wait_for_completion_timeout(&obj->calibration_done,
-					  msecs_to_jiffies(3000));
-	if (!err) {
-		pr_err("%s fail!\n", __func__);
-		return -1;
-	}
+
+
+	//err = wait_for_completion_timeout(&obj->calibration_done,msecs_to_jiffies(3000));
+	//if (!err) {
+	//	pr_err("%s fail!\n", __func__);
+	//	return -1;
+	//}
+
 	spin_lock(&calibration_lock);
 	data[ACCELHUB_AXIS_X] = obj->static_cali[ACCELHUB_AXIS_X];
 	data[ACCELHUB_AXIS_Y] = obj->static_cali[ACCELHUB_AXIS_Y];
@@ -819,7 +783,7 @@ static int accelhub_probe(struct platform_device *pdev)
 	atomic_set(&obj->selftest_status, 0);
 	WRITE_ONCE(obj->factory_enable, false);
 	WRITE_ONCE(obj->android_enable, false);
-	init_completion(&obj->calibration_done);
+//	init_completion(&obj->calibration_done);
 	init_completion(&obj->selftest_done);
 	scp_power_monitor_register(&scp_ready_notifier);
 	err = scp_sensorHub_data_registration(ID_ACCELEROMETER,

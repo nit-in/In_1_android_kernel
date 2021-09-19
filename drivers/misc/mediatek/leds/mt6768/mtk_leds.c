@@ -1,5 +1,6 @@
 /*
  * Copyright (C) 2015 MediaTek Inc.
+ * Copyright (C) 2021 XiaoMi, Inc.
  *
  * This program is free software: you can redistribute it and/or modify
  * it under the terms of the GNU General Public License version 2 as
@@ -59,6 +60,11 @@ u16 pmic_set_register_value(u32 flagname, u32 val)
 {
 	return 0;
 }
+#endif
+
+#if defined(CONFIG_KTD3136_SUPPORT) && defined(CONFIG_LM3697_SUPPORT)
+extern int ktd3137_brightness_set(int brightness);
+extern int lm3697_set_brightness(int brightness);
 #endif
 
 static DEFINE_MUTEX(leds_mutex);
@@ -122,16 +128,23 @@ static void backlight_debug_log(int level, int mappingLevel)
 {
 	unsigned long cur_time_mod = 0;
 	unsigned long long cur_time_display = 0;
+	int ret = 0;
 
 	current_t = sched_clock();
 	cur_time_display = current_t;
-	cur_time_mod = do_div(cur_time_display, 1000000000);
+	do_div(cur_time_display, 1000000);
+	cur_time_mod = do_div(cur_time_display, 1000);
 
-	sprintf(buffer + strlen(buffer), "T:%lld.%ld,L:%d map:%d    ",
-		cur_time_display, cur_time_mod/1000000, level, mappingLevel);
+	ret = snprintf(buffer + strlen(buffer),
+		4095 - strlen(buffer), "T:%lld.%ld,L:%d map:%d    ",
+		cur_time_display, cur_time_mod, level, mappingLevel);
 
 	count++;
 
+	if (ret < 0 || ret >= 4096) {
+		pr_info("print log error!");
+		count = 5;
+	}
 	if (level == 0 || count >= 5 || (current_t - last_time) > 1000000000) {
 		LEDS_DEBUG("%s", buffer);
 		count = 0;
@@ -153,6 +166,12 @@ struct cust_mt65xx_led *get_cust_led_dtsi(void)
 	int i, ret;
 	int mode, data;
 	int pwm_config[5] = { 0 };
+
+	extern char *saved_command_line;
+	int bkl_id = 0;
+	char *bkl_ptr = (char *)strnstr(saved_command_line, ":bklic=", strlen(saved_command_line));
+	bkl_ptr += strlen(":bklic=");
+	bkl_id = simple_strtol(bkl_ptr, NULL, 10);
 
 	if (pled_dtsi)
 		goto out;
@@ -233,6 +252,16 @@ struct cust_mt65xx_led *get_cust_led_dtsi(void)
 			pled_dtsi[i].data =
 			   (long)chargepump_set_backlight_level;
 			LEDS_DEBUG("BL set by chargepump\n");
+#elif defined(CONFIG_KTD3136_SUPPORT) && defined(CONFIG_LM3697_SUPPORT)
+			LEDS_DEBUG("[%s]: *liuyundong*, bkl_id = %d\n", __func__, bkl_id);
+
+			if (bkl_id == 24) {
+				pled_dtsi[i].data = (long)ktd3137_brightness_set;
+				LEDS_DEBUG("[%s]: backlight is ktd3136 contrl!\n", __func__);
+			} else if (bkl_id == 1) {
+				pled_dtsi[i].data = (long)lm3697_set_brightness;
+				LEDS_DEBUG("[%s]: backlight is lm3697 contrl!\n", __func__);
+			}
 #else
 			pled_dtsi[i].data = (long)mtkfb_set_backlight_level;
 #endif
@@ -876,11 +905,17 @@ void mt_mt65xx_led_set(struct led_classdev *led_cdev, enum led_brightness level)
 
 	backlight_debug_log(led_data->level, level);
 	disp_pq_notify_backlight_changed((((1 << MT_LED_INTERNAL_LEVEL_BIT_CNT)
-					    - 1) * level + 127) / 255);
+					    - 1) * level + 127) / 2047);
 #ifdef CONFIG_MTK_AAL_SUPPORT
+#ifdef FACTORY_VERSION_ENABLE
 	disp_aal_notify_backlight_changed((((1 <<
 					MT_LED_INTERNAL_LEVEL_BIT_CNT)
 					    - 1) * level + 127) / 255);
+#else
+	disp_aal_notify_backlight_changed((((1 <<
+					MT_LED_INTERNAL_LEVEL_BIT_CNT)
+					    - 1) * level + 127) / 2047);
+#endif
 #else
 	if (led_data->cust.mode == MT65XX_LED_MODE_CUST_BLS_PWM)
 		mt_mt65xx_led_set_cust(&led_data->cust,

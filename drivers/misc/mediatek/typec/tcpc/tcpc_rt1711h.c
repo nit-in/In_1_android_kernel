@@ -346,40 +346,6 @@ static inline int rt1711_i2c_read16(
 	return data;
 }
 
-/* prize add by liaoxingen according to richetk mail 20201106 start */
-static inline int rt1711_i2c_update_bits(struct tcpc_device *tcpc, u8 reg,
-					 u8 val, u8 mask)
-{
-	int ret;
-	u8 data;
-	struct rt1711_chip *chip = tcpc_get_dev_data(tcpc);
-
-	down(&chip->io_lock);
-	data = rt1711_reg_read(chip->client, reg);
-	if (ret < 0) {
-		up(&chip->io_lock);
-		return ret;
-	}
-
-	data &= ~mask;
-	data |= (val & mask);
-
-	ret = rt1711_reg_write(chip->client, reg, data);
-	up(&chip->io_lock);
-	return ret;
-}
-
-static inline int rt1711_i2c_set_bit(struct tcpc_device *tcpc, u8 reg, u8 mask)
-{
-	return rt1711_i2c_update_bits(tcpc, reg, mask, mask);
-}
-
-static inline int rt1711_i2c_clr_bit(struct tcpc_device *tcpc, u8 reg, u8 mask)
-{
-	return rt1711_i2c_update_bits(tcpc, reg, 0x00, mask);
-}
-/* prize add by liaoxingen according to richetk mail 20201106 end */
-
 #ifdef CONFIG_RT_REGMAP
 static struct rt_regmap_fops rt1711_regmap_fops = {
 	.read_device = rt1711_read_device,
@@ -1001,7 +967,7 @@ static int rt1711_set_cc(struct tcpc_device *tcpc, int pull)
 {
 	int ret;
 	uint8_t data;
-	int rp_lvl = TYPEC_CC_PULL_GET_RP_LVL(pull);
+	int rp_lvl = TYPEC_CC_PULL_GET_RP_LVL(pull), pull1, pull2;
 
 	RT1711_INFO("\n");
 	pull = TYPEC_CC_PULL_GET_RES(pull);
@@ -1022,7 +988,17 @@ static int rt1711_set_cc(struct tcpc_device *tcpc, int pull)
 			rt1711h_init_cc_params(tcpc, TYPEC_CC_VOLT_SNK_DFT);
 #endif	/* CONFIG_USB_POWER_DELIVERY */
 
-		data = TCPC_V10_REG_ROLE_CTRL_RES_SET(0, rp_lvl, pull, pull);
+		pull1 = pull2 = pull;
+
+		if ((pull == TYPEC_CC_RP_DFT || pull == TYPEC_CC_RP_1_5 ||
+			pull == TYPEC_CC_RP_3_0) &&
+			tcpc->typec_is_attached_src) {
+			if (tcpc->typec_polarity)
+				pull1 = TYPEC_CC_OPEN;
+			else
+				pull2 = TYPEC_CC_OPEN;
+		}
+		data = TCPC_V10_REG_ROLE_CTRL_RES_SET(0, rp_lvl, pull1, pull2);
 		ret = rt1711_i2c_write8(tcpc, TCPC_V10_REG_ROLE_CTRL, data);
 	}
 
@@ -1095,15 +1071,6 @@ static int rt1711_set_low_power_mode(
 {
 	int rv = 0;
 	uint8_t data;
-
-   /* prize add by liaoxingen according to richetk mail 20201106 start */
-   /*
-    * Enable Autoidle when enter low power mode
-    * Disable Autoidle when leave low power mode
-    */
-   rv = (en ? rt1711_i2c_clr_bit : rt1711_i2c_set_bit)
-       (tcpc_dev, RT1711H_REG_IDLE_CTRL, RT1711H_REG_AUTOIDLE_EN);
-   /* prize add by liaoxingen according to richetk mail 20201106 end */
 
 	if (en) {
 		data = RT1711H_REG_BMCIO_LPEN;
@@ -1353,9 +1320,9 @@ static int rt_parse_dt(struct rt1711_chip *chip, struct device *dev)
 
 	pr_info("%s\n", __func__);
 
-	np = of_find_node_by_name(NULL, "type_c_port0");
+	np = of_find_node_by_name(NULL, "rt1711_type_c_port0");
 	if (!np) {
-		pr_notice("%s find node type_c_port0 fail\n", __func__);
+		pr_notice("%s find node rt1711_type_c_port0 fail\n", __func__);
 		return -ENODEV;
 	}
 	dev->of_node = np;
@@ -1367,7 +1334,6 @@ static int rt_parse_dt(struct rt1711_chip *chip, struct device *dev)
 		return ret;
 	}
 	chip->irq_gpio = ret;
-	pr_err("%s chip->irq_gpio =%d\n", __func__,chip->irq_gpio);
 #else
 	ret = of_property_read_u32(np,
 		"rt1711pd,intr_gpio_num", &chip->irq_gpio);

@@ -1,20 +1,8 @@
-/* Goodix's GF316M/GF318M/GF3118M/GF518M/GF5118M/GF516M/GF816M/GF3208/GF5216
- *  fingerprint sensor linux driver for TEE
- *
- * 2010 - 2015 Goodix Technology.
- *
- * This program is free software; you can redistribute it and/or modify
- * it under the terms of the GNU General Public License as published by
- * the Free Software Foundation; either version 2 of the License, or
- * (at your option) any later version.
- *
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
- * GNU General Public License for more details.
+/*
+ * Copyright (C) 2013-2016, Shenzhen Huiding Technology Co., Ltd.
+ * Copyright (C) 2021 XiaoMi, Inc.
+ * All Rights Reserved.
  */
-
-
 #ifndef __GF_SPI_TEE_H
 #define __GF_SPI_TEE_H
 
@@ -24,9 +12,6 @@
 #include <linux/input.h>
 #ifndef CONFIG_SPI_MT65XX
 #include "mtk_spi.h"
-#endif
-#ifdef CONFIG_MTK_MT6306_GPIO_SUPPORT
-#include <mach/mtk_6306_gpio.h>
 #endif
 #ifdef CONFIG_HAS_EARLYSUSPEND
 #include <linux/earlysuspend.h>
@@ -39,7 +24,9 @@
 #define INFO_LOG (1)
 #define DEBUG_LOG (2)
 
+/* debug log setting */
 extern u8 g_debug_level;
+
 #define gf_debug(level, fmt, args...) do { \
 			if (g_debug_level >= level) {\
 				pr_warn("[gf] " fmt, ##args); \
@@ -60,14 +47,13 @@ extern u8 g_debug_level;
 #define GF_NAV_INPUT_DOUBLE_CLICK	KEY_VOLUMEUP
 #define GF_NAV_INPUT_LONG_PRESS		KEY_SEARCH
 #define GF_NAV_INPUT_HEAVY		KEY_CHAT
-//prize-add huhongcheng 20190329 change HOME_KEY to F11 start
-#define GF_KEY_INPUT_HOME		KEY_F11
-//#define GF_KEY_INPUT_HOME		KEY_HOMEPAGE
-//prize-add huhongcheng 20190329 change HOME_KEY to F11 end
+
+#define GF_KEY_INPUT_HOME		KEY_SELECT
 #define GF_KEY_INPUT_MENU		KEY_MENU
 #define GF_KEY_INPUT_BACK		KEY_BACK
 #define GF_KEY_INPUT_POWER		KEY_POWER
 #define GF_KEY_INPUT_CAMERA		KEY_CAMERA
+#define GF_KEY_INPUT_KPENTER            KEY_KPENTER
 
 typedef enum gf_nav_event {
 	GF_NAV_NONE = 0,
@@ -113,11 +99,11 @@ struct gf_ioc_transfer {
 };
 
 struct gf_ioc_transfer_raw {
-	u32 len;
-	u8 *read_buf;
-	u8 *write_buf;
-	uint32_t high_time;
-	uint32_t low_time;
+    u32 len;
+    u8 *read_buf;
+    u8 *write_buf;
+    uint32_t high_time;
+    uint32_t low_time;
 };
 
 struct gf_ioc_chip_info {
@@ -133,26 +119,23 @@ struct gf_ioc_chip_info {
 #define GF_SPI_SPEED_HIGH 9
 
 enum gf_spi_cpol {
-	GF_SPI_CPOL_0,
-	GF_SPI_CPOL_1
+    GF_SPI_CPOL_0,
+    GF_SPI_CPOL_1
 };
 
 enum gf_spi_cpha {
-	GF_SPI_CPHA_0,
-	GF_SPI_CPHA_1
+    GF_SPI_CPHA_0,
+    GF_SPI_CPHA_1
 };
 
 typedef struct {
-	unsigned int cs_setuptime;
-	unsigned int cs_holdtime;
-	unsigned int cs_idletime;
-	unsigned int speed_hz; /* spi clock rate */
-	/* The time ratio of active level in a period. Default value is 50.
-	* that means high time and low time is same.
-	*/
-	unsigned int duty_cycle;
-	enum gf_spi_cpol cpol;
-	enum gf_spi_cpol cpha;
+    unsigned int cs_setuptime;
+    unsigned int cs_holdtime;
+    unsigned int cs_idletime;
+    unsigned int speed_hz; //spi clock rate
+    unsigned int duty_cycle; //The time ratio of active level in a period. Default value is 50. that means high time and low time is same.
+    enum gf_spi_cpol cpol;
+    enum gf_spi_cpol cpha;
 } gf_spi_cfg_t;
 
 /* define commands */
@@ -185,9 +168,6 @@ typedef struct {
 #define GF_IOC_SPI_INIT_CFG_CMD	_IOW(GF_IOC_MAGIC, 17, gf_spi_cfg_t)
 
 #define  GF_IOC_MAXNR    18  /* THIS MACRO IS NOT USED NOW... */
-
-/* SMT backup solution (just to get chip ID) */
-#define GF_IOC_FTM		_IOR(GF_IOC_MAGIC, 20, u8)
 
 struct gf_device {
 	dev_t devno;
@@ -237,10 +217,10 @@ struct gf_device {
 	u8  need_update;
 	u32 irq;
 
-#if 1//def CONFIG_OF
+#ifdef CONFIG_OF
 	struct pinctrl *pinctrl_gpios;
-	struct pinctrl_state *pins_default, *pins_irq, *ldo_high, *ldo_low;//prize-mod wyq 20181220 for ldo enable
-	struct pinctrl_state *pins_miso_spi, *pins_miso_pullhigh, *pins_miso_pulllow;
+	struct pinctrl_state *pins_irq;
+	struct pinctrl_state *pins_miso_spi, *pins_miso_pullhigh, *pins_miso_pulllow, *pins_spi_cs_high, *pins_spi_cs_low;
 	struct pinctrl_state *pins_reset_high, *pins_reset_low;
 #endif
 };
@@ -249,14 +229,11 @@ struct gf_device {
 
 #ifndef SUPPORT_REE_SPI
 #define SUPPORT_REE_SPI
+//#define SUPPORT_REE_OSWEGO
 #endif
 
 #ifdef SUPPORT_REE_SPI
-//prize-add wyq 20181220 for reading chip id during probe in REE
-#ifndef CONFIG_MICROTRUST_TEE_SUPPORT
-#define SUPPORT_REE_MILAN_A
-#define SUPPORT_REE_OSWEGO
-#endif
+
 #define HIGH_SPEED 6
 #define LOW_SPEED  1
 
@@ -265,6 +242,8 @@ struct gf_device {
 #define ERR_PREPARE_FAIL 113
 
 /**********************function defination**********************/
+extern bool goodix_fp_exist;
+extern bool fpc1022_fp_exist;
 #ifndef CONFIG_SPI_MT65XX
 void gf_spi_setup_conf_ree(struct gf_device *gf_dev, u32 speed, enum spi_transfer_mode mode);
 #endif
@@ -279,14 +258,6 @@ int  gf_ioctl_spi_init_cfg_cmd(struct mt_chip_conf *mcc, unsigned long arg);
 #ifdef CONFIG_SPI_MT65XX
 extern void mt_spi_enable_master_clk(struct spi_device *spidev);
 extern void mt_spi_disable_master_clk(struct spi_device *spidev);
-#endif
-
-#ifdef SUPPORT_REE_MILAN_A
-#ifndef CONFIG_TRUSTONIC_TEE_SUPPORT
-int gf_spi_read_bytes_ree_new(struct gf_device *gf_dev, u16 addr, u32 data_len, u8 *buf);
-int gf_spi_write_bytes_ree_new(struct gf_device *gf_dev, u16 addr, u32 data_len, u8 *buf);
-int gf_milan_a_series_init_process(struct gf_device *gf_dev);
-#endif
 #endif
 
 #endif

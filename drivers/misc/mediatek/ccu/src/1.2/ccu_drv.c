@@ -85,10 +85,8 @@ static uint32_t ccu_hw_base;
 static wait_queue_head_t wait_queue_deque;
 static wait_queue_head_t wait_queue_enque;
 
-#ifdef CONFIG_PM_WAKELOCKS
+#ifdef CONFIG_PM_SLEEP
 struct wakeup_source ccu_wake_lock;
-#else
-struct wake_lock ccu_wake_lock;
 #endif
 /*static  int g_bWaitLock;*/
 
@@ -125,6 +123,7 @@ static int ccu_suspend(struct platform_device *dev, pm_message_t mesg);
 
 static int ccu_resume(struct platform_device *dev);
 
+static int32_t _clk_count;
 /*---------------------------------------------------------------------------*/
 /* CCU Driver: pm operations                                                 */
 /*---------------------------------------------------------------------------*/
@@ -334,7 +333,7 @@ int ccu_flush_commands_from_queue(struct ccu_user_s *user)
 
 int ccu_pop_command_from_queue(struct ccu_user_s *user, struct ccu_cmd_s **rcmd)
 {
-	int ret;
+	long ret;
 	struct ccu_cmd_s *cmd;
 
 	/* wait until condition is true */
@@ -344,11 +343,11 @@ int ccu_pop_command_from_queue(struct ccu_user_s *user, struct ccu_cmd_s **rcmd)
 
 	/* ret == 0, if timeout; ret == -ERESTARTSYS, if signal interrupt */
 	if (ret == 0) {
-		LOG_ERR("timeout: pop a command! ret=%d\n", ret);
+		LOG_ERR("timeout: pop a command! ret=%ld\n", ret);
 		*rcmd = NULL;
 		return -1;
 	} else if (ret < 0) {
-		LOG_ERR("interrupted by system signal: %d\n", ret);
+		LOG_ERR("interrupted by system signal: %ld\n", ret);
 
 		if (ret == -ERESTARTSYS)
 			LOG_ERR("interrupted as -ERESTARTSYS\n");
@@ -359,7 +358,7 @@ int ccu_pop_command_from_queue(struct ccu_user_s *user, struct ccu_cmd_s **rcmd)
 	/* This part should not be happened */
 	if (list_empty(&user->deque_ccu_cmd_list)) {
 		mutex_unlock(&user->data_mutex);
-		LOG_ERR("pop a command from empty queue! ret=%d\n", ret);
+		LOG_ERR("pop a command from empty queue! ret=%ld\n", ret);
 		*rcmd = NULL;
 		return -1;
 	};
@@ -421,6 +420,9 @@ static int ccu_open(struct inode *inode, struct file *flip)
 	struct ccu_user_s *user;
 
 	LOG_INF_MUST("%s +", __func__);
+
+	_clk_count = 0;
+
 	user = NULL;
 	ccu_create_user(&user);
 	flip->private_data = user;
@@ -562,7 +564,10 @@ int ccu_clock_enable(void)
 {
 	int ret;
 
-	LOG_DBG_MUST("%s.\n", __func__);
+	LOG_DBG_MUST("%s %d.\n", __func__, _clk_count);
+
+	mutex_lock(&g_ccu_device->clk_mutex);
+	_clk_count++;
 
 	ret = clk_prepare_enable(ccu_clk_pwr_ctrl[0]);
 	if (ret)
@@ -570,15 +575,22 @@ int ccu_clock_enable(void)
 	ret = clk_prepare_enable(ccu_clk_pwr_ctrl[1]);
 	if (ret)
 		LOG_ERR("CCU_CLK_CAM_CCU enable fail.\n");
+	mutex_unlock(&g_ccu_device->clk_mutex);
 
 	return ret;
 }
 
 void ccu_clock_disable(void)
 {
-	LOG_DBG_MUST("%s.\n", __func__);
-	clk_disable_unprepare(ccu_clk_pwr_ctrl[1]);
-	clk_disable_unprepare(ccu_clk_pwr_ctrl[0]);
+	LOG_DBG_MUST("%s %d.\n", __func__, _clk_count);
+
+	mutex_lock(&g_ccu_device->clk_mutex);
+	if (_clk_count > 0) {
+		clk_disable_unprepare(ccu_clk_pwr_ctrl[1]);
+		clk_disable_unprepare(ccu_clk_pwr_ctrl[0]);
+		_clk_count--;
+	}
+	mutex_unlock(&g_ccu_device->clk_mutex);
 }
 
 static MBOOL _is_fast_cmd(enum ccu_msg_id msg_id)
@@ -744,76 +756,7 @@ static long ccu_ioctl(struct file *flip, unsigned int cmd, unsigned long arg)
 
 			break;
 		}
-	case CCU_IOCTL_WAIT_AF_IRQ:
-		{
-			if (copy_from_user(&IrqInfo, (void *)arg,
-				sizeof(struct CCU_WAIT_IRQ_STRUCT)) == 0) {
-				if ((IrqInfo.Type >= CCU_IRQ_TYPE_AMOUNT) ||
-					(IrqInfo.Type < 0)) {
-					ret = -EFAULT;
-					LOG_ERR("invalid type(%d)\n",
-						IrqInfo.Type);
-					goto EXIT;
-				}
 
-				LOG_DBG("AFIRQ type(%d), userKey(%d), ",
-					IrqInfo.Type,
-					IrqInfo.EventInfo.UserKey);
-				LOG_DBG("timeout(%d), sttype(%d), st(%d)\n",
-					IrqInfo.EventInfo.Timeout,
-					IrqInfo.EventInfo.St_type,
-					IrqInfo.EventInfo.Status);
-
-				ret = ccu_AFwaitirq(&IrqInfo, CCU_CAM_TG_1);
-
-				if (copy_to_user((void *)arg, &IrqInfo,
-					sizeof(struct CCU_WAIT_IRQ_STRUCT))
-					!= 0) {
-					LOG_ERR("copy_to_user failed\n");
-					ret = -EFAULT;
-				}
-			} else {
-				LOG_ERR("copy_from_user failed\n");
-				ret = -EFAULT;
-			}
-
-			break;
-		}
-	case CCU_IOCTL_WAIT_AFB_IRQ:
-		{
-			if (copy_from_user(&IrqInfo, (void *)arg,
-				sizeof(struct CCU_WAIT_IRQ_STRUCT)) == 0) {
-				if ((IrqInfo.Type >= CCU_IRQ_TYPE_AMOUNT) ||
-					(IrqInfo.Type < 0)) {
-					ret = -EFAULT;
-					LOG_ERR("invalid type(%d)\n",
-						IrqInfo.Type);
-					goto EXIT;
-				}
-
-				LOG_DBG("AFBIRQ type(%d), userKey(%d), ",
-					IrqInfo.Type,
-					IrqInfo.EventInfo.UserKey);
-				LOG_DBG("timeout(%d), sttype(%d), st(%d)\n",
-					IrqInfo.EventInfo.Timeout,
-					IrqInfo.EventInfo.St_type,
-					IrqInfo.EventInfo.Status);
-
-				ret = ccu_AFwaitirq(&IrqInfo, CCU_CAM_TG_2);
-
-				if (copy_to_user((void *)arg, &IrqInfo,
-					sizeof(struct CCU_WAIT_IRQ_STRUCT))
-					!= 0) {
-					LOG_ERR("copy_to_user failed\n");
-					ret = -EFAULT;
-				}
-			} else {
-				LOG_ERR("copy_from_user failed\n");
-				ret = -EFAULT;
-			}
-
-			break;
-		}
 	case CCU_IOCTL_SEND_CMD:	/*--todo: not used for now, remove it*/
 		{
 			struct ccu_cmd_s cmd;
@@ -1273,11 +1216,8 @@ static int ccu_probe(struct platform_device *pdev)
 					CCU_DEV_NAME, ret);
 				goto EXIT;
 			}
-#ifdef CONFIG_PM_WAKELOCKS
+#ifdef CONFIG_PM_SLEEP
 			wakeup_source_init(&ccu_wake_lock, "ccu_lock_wakelock");
-#else
-			wake_lock_init(&ccu_wake_lock,
-				WAKE_LOCK_SUSPEND, "ccu_lock_wakelock");
 #endif
 
 			/* enqueue/dequeue control in ihalpipe wrapper */
@@ -1375,6 +1315,7 @@ static int __init CCU_INIT(void)
 
 	INIT_LIST_HEAD(&g_ccu_device->user_list);
 	mutex_init(&g_ccu_device->user_mutex);
+	mutex_init(&g_ccu_device->clk_mutex);
 	init_waitqueue_head(&g_ccu_device->cmd_wait);
 
 	/* Register M4U callback */
