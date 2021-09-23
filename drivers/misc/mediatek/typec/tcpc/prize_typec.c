@@ -65,8 +65,8 @@ static int prize_typec_probe(struct platform_device *pdev)
 	//else
 
 #ifdef	CONFIG_TCPC_CLASS
-    if(!IS_ERR(lp_sel_set_low))
- 	    pinctrl_select_state(prize_typec_pinctrl,lp_sel_set_low);
+	if(!IS_ERR(lp_sel_set_low))
+		pinctrl_select_state(prize_typec_pinctrl,lp_sel_set_low);
 #endif
 	mic_high = pinctrl_lookup_state(prize_typec_pinctrl, "mic_high");
 	if (IS_ERR(mic_high))
@@ -97,8 +97,11 @@ static int prize_typec_probe(struct platform_device *pdev)
 void typec_pinctrl_sel(int state)
 {
 			int ret = 0;
-    if(prize_typec_pinctrl == NULL)
-        return;
+	if(prize_typec_pinctrl == NULL){
+		return;
+	}
+	
+
 	if (state)
 	{
 			printk("hsl typec_pinctrl_sel lp_sel_set_high\n");
@@ -106,7 +109,7 @@ void typec_pinctrl_sel(int state)
 					if (IS_ERR(lp_sel_set_high)) {
 							ret = PTR_ERR(lp_sel_set_high);
 							printk("%s : init err, lp_sel_set_high\n", __func__);
-                            return;
+							return;
 					}
 			pinctrl_select_state(prize_typec_pinctrl,lp_sel_set_high);
 	}
@@ -119,7 +122,7 @@ void typec_pinctrl_sel(int state)
 		 }
 		 else
 		 {
-		 		printk("hsl typec_pinctrl_sel lp_sel_set_low fail\n");
+				printk("hsl typec_pinctrl_sel lp_sel_set_low fail\n");
 		 }
 	}
 }
@@ -127,8 +130,10 @@ void typec_pinctrl_sel(int state)
 void typec_pinctrl_mic(int state)
 {
 			int ret = 0;
-    if(prize_typec_pinctrl == NULL)
-        return;
+	if(prize_typec_pinctrl == NULL){
+		return;
+	}
+	
 	if (state)
 	{
 			printk("hsl typec_pinctrl_mic lp_mic_set_high\n");
@@ -136,7 +141,7 @@ void typec_pinctrl_mic(int state)
 					if (IS_ERR(mic_high)) {
 							ret = PTR_ERR(mic_high);
 							printk("%s : init err, mic_high\n", __func__);
-                            return;
+							return;
 					}
 			if (!IS_ERR(mic_high)) {
 				pinctrl_select_state(prize_typec_pinctrl,mic_high);
@@ -151,7 +156,7 @@ void typec_pinctrl_mic(int state)
 		 }
 		 else
 		 {
-		 		printk("hsl typec_pinctrl_sel mic_low fail\n");
+				printk("hsl typec_pinctrl_sel mic_low fail\n");
 		 }
 	}
 }
@@ -159,8 +164,8 @@ void typec_pinctrl_mic(int state)
 #if defined(CONFIG_PRIZE_SWITCH_SGM3798_SUPPORT)
 void typec_pinctrl_mic_reverse(void){
 	static int sel_pin_state = 0;
-    if(prize_typec_pinctrl == NULL)
-        return;
+	if(prize_typec_pinctrl == NULL)
+		return;
 	if (sel_pin_state){
 		if (!IS_ERR(mic_low)) {
 			pinctrl_select_state(prize_typec_pinctrl,mic_low);

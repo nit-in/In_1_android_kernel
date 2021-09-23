@@ -62,7 +62,7 @@ static int aw881xx_write_cali_re_to_file(uint32_t cali_re, char *name_suffix)
 		return -EINVAL;
 	}
 
-	snprintf(buf, PAGE_SIZE, "%10d", cali_re);
+	snprintf(buf, sizeof(buf), "%10d", cali_re);
 
 	fs = get_fs();
 	set_fs(KERNEL_DS);
